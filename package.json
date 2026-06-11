@@ -1,0 +1,58 @@
+{
+  "name": "starblast-desktop",
+  "version": "1.1.0",
+  "description": "Starblast.io desktop client with custom visuals",
+  "main": "main.js",
+  "author": "Starblast Desktop",
+  "license": "MIT",
+  "scripts": {
+    "bundle": "node scripts/bundle-client.js",
+    "bundle:mods": "node scripts/build-mods-bundle.js",
+    "publish:mods": "node scripts/publish-mods-manifest.js",
+    "update:launcher": "node scripts/update-launcher-mods.js",
+    "patch:launcher": "node scripts/patch-starblast-launcher.js",
+    "prestart": "npm run bundle",
+    "start": "electron .",
+    "pack": "npm run bundle && electron-builder --dir",
+    "dist": "npm run bundle && electron-builder",
+    "dist:win": "npm run bundle && electron-builder --win",
+    "dist:linux": "npm run bundle && electron-builder --linux"
+  },
+  "devDependencies": {
+    "electron": "^33.2.1",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "io.starblast.desktop",
+    "productName": "Starblast Desktop",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "inject/**",
+      "client/**",
+      "scripts/bundle-client.js",
+      "scripts/mod-sync.js",
+      "update-config.json"
+    ],
+    "linux": {
+      "target": [
+        "AppImage",
+        "zip"
+      ],
+      "category": "Game"
+    },
+    "win": {
+      "target": [
+        "portable"
+      ],
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": true,
+      "allowToChangeInstallationDirectory": false
+    }
+  }
+}

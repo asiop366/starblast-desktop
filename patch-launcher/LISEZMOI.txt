@@ -1,0 +1,60 @@
+Pour ton pote — Starblast Launcher + mods visuels
+================================================
+
+CE QU'IL DOIT DEJA AVOIR
+  • Starblast Launcher installe (Starblast-Launcher-Setup-1_2_0.exe)
+  • Node.js LTS : https://nodejs.org/  (une fois, gratuit)
+
+CE QUE TU LUI ENVOIES
+  Le dossier "patch-launcher" (zip) contenant :
+    - PATCH-LAUNCHER.bat      <- premiere installation (double-clic)
+    - UPDATE-LAUNCHER.bat     <- mises a jour auto (double-clic)
+    - update-config.json      <- URL de tes mods (tu le prepares)
+    - scripts/
+    - inject/
+
+MISE A JOUR AUTO (comme un vrai client)
+  Toi :
+    1. Tu modifies inject/ sur ton PC
+    2. npm run publish:mods  (genere mods-manifest.json + releases/)
+    3. Tu push sur GitHub (ou heberge les fichiers en HTTPS)
+    4. Tu lui renvoies update-config.json si l URL change
+
+  Lui :
+    1. Double-clic UPDATE-LAUNCHER.bat
+    2. Relance Starblast Launcher
+    -> Il a tes dernieres modifs sans retaper le zip complet
+
+  update-config.json exemple :
+    { "manifestUrl": "https://raw.githubusercontent.com/TOI/repo/main/mods-manifest.json" }
+
+ETAPES PREMIERE FOIS
+  1. Installer Starblast Launcher (s'il ne l'a pas deja)
+  2. Installer Node.js LTS si pas fait
+  3. Extraire le zip patch-launcher n'importe ou (Bureau, etc.)
+  4. Double-clic sur PATCH-LAUNCHER.bat
+  5. Relancer Starblast Launcher
+  6. Jouer en Browser / Steam / ECP comme d'habitude
+
+CE QUI CHANGE APRES PATCH
+  • Parametres (menu Starblast) — nouvelles options :
+      - Glow des gemmes (monde)
+      - Neon barre gemmes
+      - Couleur barre bouclier + Neon barre bouclier
+      - Couleur barre energie + Neon barre energie
+      - Leaderboard galaxie + neon pseudo
+      - Couleur neon pseudo (leaderboard)
+  • Gem Color 1 / 2 (deja dans le Launcher) = couleur des gemmes en jeu
+  • Modif vaisseau : affichage corrige (plus de preview geante)
+
+APRES RE-PATCH MANUEL (sans auto-update)
+  1. Relance PATCH-LAUNCHER.bat
+  2. Ouvre Parametres dans le menu Starblast
+  3. Active les 2 nouvelles options en bas
+  4. Change Gem Color 1 pour la couleur des gemmes
+  5. En partie : TAB pour voir le leaderboard neon
+
+IMPORTANT
+  • Usage perso uniquement (licence du Launcher)
+  • Ne pas renvoyer le Launcher patche a d'autres personnes
+  • Si probleme : restaurer resources\app.asar.bak en app.asar

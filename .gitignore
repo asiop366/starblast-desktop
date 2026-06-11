@@ -1,0 +1,12 @@
+node_modules/
+dist/win-unpacked/
+dist/linux-unpacked/
+dist/*.AppImage
+dist/*.exe
+dist/*.zip
+dist/builder-debug.yml
+.launcher-patch-tmp/
+client/index.raw.html
+*.bak
+.env
+.DS_Store
