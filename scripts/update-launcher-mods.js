@@ -1,13 +1,11 @@
 /**
  * Download latest launcher mod bundle and re-patch Starblast Launcher.
- * Usage: node scripts/update-launcher-mods.js
- * Env: SB_MODS_MANIFEST_URL or update-config.json manifestUrl
  */
 const fs = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
 const { fetchUrl, loadUpdateConfig } = require('./mod-sync.js');
 const { resolveLauncherInstall } = require('./find-launcher-install.js');
+const { patchLauncher } = require('./patch-starblast-launcher.js');
 
 const ROOT = path.join(__dirname, '..');
 
@@ -28,6 +26,8 @@ async function main() {
     launcherDir = resolveLauncherInstall(process.env.SB_LAUNCHER_DIR || '', ROOT);
   } catch (err) {
     console.error(err.message || err);
+    console.error('');
+    console.error('Lance PATCH-LAUNCHER.bat une premiere fois.');
     process.exit(1);
   }
 
@@ -45,10 +45,7 @@ async function main() {
   fs.writeFileSync(out, bundle);
 
   console.log('Patching Starblast Launcher…');
-  execSync(
-    'node scripts/patch-starblast-launcher.js ' + JSON.stringify(launcherDir) + ' --use-downloaded-bundle',
-    { cwd: ROOT, stdio: 'inherit' }
-  );
+  patchLauncher(launcherDir, { useDownloadedBundle: true, rootDir: ROOT });
   console.log('Done — relaunch Starblast Launcher.');
 }
 

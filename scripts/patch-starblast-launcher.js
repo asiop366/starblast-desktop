@@ -1,26 +1,20 @@
 /**
  * Patch an installed Starblast Launcher (personal use only) to load desktop visual mods.
- *
- * Usage (on Windows, after installing Starblast Launcher):
- *   node scripts/patch-starblast-launcher.js "C:\Users\YOU\AppData\Local\Programs\starblast-launcher"
- *
- * Or from this repo on Linux to patch an extracted copy:
- *   node scripts/patch-starblast-launcher.js /path/to/launcher/resources
  */
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
-
-const ROOT = path.join(__dirname, '..');
-const MARKER = '/* sb-desktop-mods-inject */';
 const {
   resolveLauncherInstall,
   saveLauncherPath
 } = require('./find-launcher-install.js');
 
-function buildBundle() {
-  execSync('node scripts/build-mods-bundle.js --launcher', { cwd: ROOT, stdio: 'inherit' });
-  return fs.readFileSync(path.join(ROOT, 'dist', 'sb-desktop-mods.launcher.bundle.js'), 'utf8');
+const ROOT = path.join(__dirname, '..');
+const MARKER = '/* sb-desktop-mods-inject */';
+
+function buildBundle(rootDir) {
+  execSync('node scripts/build-mods-bundle.js --launcher', { cwd: rootDir, stdio: 'inherit' });
+  return fs.readFileSync(path.join(rootDir, 'dist', 'sb-desktop-mods.launcher.bundle.js'), 'utf8');
 }
 
 function escapeForTemplate(code) {
@@ -86,34 +80,27 @@ function packAsar(srcDir, asarPath) {
   });
 }
 
-function loadBundle() {
-  const useDownloaded = process.argv.indexOf('--use-downloaded-bundle') >= 0;
-  const existing = path.join(ROOT, 'dist', 'sb-desktop-mods.launcher.bundle.js');
+function loadBundle(rootDir, useDownloaded) {
+  const existing = path.join(rootDir, 'dist', 'sb-desktop-mods.launcher.bundle.js');
   if (useDownloaded && fs.existsSync(existing)) {
     console.log('Using downloaded mods bundle...');
     return fs.readFileSync(existing, 'utf8');
   }
   console.log('Building mods bundle...');
-  return buildBundle();
+  return buildBundle(rootDir);
 }
 
-function main() {
-  const args = process.argv.slice(2).filter(function (a) { return !a.startsWith('--'); });
-  let input;
-  try {
-    input = resolveLauncherInstall(args[0] || '', ROOT);
-  } catch (err) {
-    console.error(err.message || err);
-    process.exit(1);
-  }
-
-  const resources = findResourcesDir(input);
+function patchLauncher(input, options) {
+  options = options || {};
+  const rootDir = options.rootDir || ROOT;
+  const installDir = resolveLauncherInstall(input || '', rootDir);
+  const resources = findResourcesDir(installDir);
   const asarPath = path.join(resources, 'app.asar');
   const steamPath = path.join(resources, 'steam.js');
-  const tmpDir = path.join(ROOT, '.launcher-patch-tmp');
+  const tmpDir = path.join(rootDir, '.launcher-patch-tmp');
 
-  console.log('Launcher: ' + input);
-  const bundle = loadBundle();
+  console.log('Launcher: ' + installDir);
+  const bundle = loadBundle(rootDir, !!options.useDownloadedBundle);
 
   if (fs.existsSync(asarPath)) {
     console.log('Extracting app.asar...');
@@ -133,9 +120,24 @@ function main() {
     throw new Error('No app.asar or steam.js in ' + resources);
   }
 
+  saveLauncherPath(rootDir, installDir);
   console.log('\nDone. Restart Starblast Launcher.');
-  console.log('Note: personal use only — do not redistribute the patched launcher (license).');
-  saveLauncherPath(ROOT, input);
 }
 
-main();
+function main() {
+  const args = process.argv.slice(2).filter(function (a) { return !a.startsWith('--'); });
+  const useDownloaded = process.argv.indexOf('--use-downloaded-bundle') >= 0;
+  try {
+    patchLauncher(args[0] || '', { useDownloadedBundle: useDownloaded, rootDir: ROOT });
+  } catch (err) {
+    console.error(err.message || err);
+    process.exit(1);
+  }
+  console.log('Note: personal use only — do not redistribute the patched launcher (license).');
+}
+
+module.exports = { patchLauncher };
+
+if (require.main === module) {
+  main();
+}
