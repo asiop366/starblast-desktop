@@ -7,6 +7,7 @@ const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
 const { fetchUrl, loadUpdateConfig } = require('./mod-sync.js');
+const { resolveLauncherInstall } = require('./find-launcher-install.js');
 
 const ROOT = path.join(__dirname, '..');
 
@@ -19,6 +20,14 @@ async function main() {
 
   if (!manifestUrl) {
     console.error('Set manifestUrl in update-config.json or SB_MODS_MANIFEST_URL');
+    process.exit(1);
+  }
+
+  let launcherDir;
+  try {
+    launcherDir = resolveLauncherInstall(process.env.SB_LAUNCHER_DIR || '', ROOT);
+  } catch (err) {
+    console.error(err.message || err);
     process.exit(1);
   }
 
@@ -36,7 +45,10 @@ async function main() {
   fs.writeFileSync(out, bundle);
 
   console.log('Patching Starblast Launcher…');
-  execSync('node scripts/patch-starblast-launcher.js', { cwd: ROOT, stdio: 'inherit' });
+  execSync(
+    'node scripts/patch-starblast-launcher.js ' + JSON.stringify(launcherDir) + ' --use-downloaded-bundle',
+    { cwd: ROOT, stdio: 'inherit' }
+  );
   console.log('Done — relaunch Starblast Launcher.');
 }
 

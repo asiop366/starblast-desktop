@@ -6,6 +6,7 @@ dist/*.exe
 dist/*.zip
 dist/builder-debug.yml
 .launcher-patch-tmp/
+launcher-install-path.txt
 client/index.raw.html
 *.bak
 .env

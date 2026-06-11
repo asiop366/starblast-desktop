@@ -13,6 +13,10 @@ const { execSync } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
 const MARKER = '/* sb-desktop-mods-inject */';
+const {
+  resolveLauncherInstall,
+  saveLauncherPath
+} = require('./find-launcher-install.js');
 
 function buildBundle() {
   execSync('node scripts/build-mods-bundle.js --launcher', { cwd: ROOT, stdio: 'inherit' });
@@ -82,10 +86,24 @@ function packAsar(srcDir, asarPath) {
   });
 }
 
+function loadBundle() {
+  const useDownloaded = process.argv.indexOf('--use-downloaded-bundle') >= 0;
+  const existing = path.join(ROOT, 'dist', 'sb-desktop-mods.launcher.bundle.js');
+  if (useDownloaded && fs.existsSync(existing)) {
+    console.log('Using downloaded mods bundle...');
+    return fs.readFileSync(existing, 'utf8');
+  }
+  console.log('Building mods bundle...');
+  return buildBundle();
+}
+
 function main() {
-  const input = process.argv[2];
-  if (!input) {
-    console.error('Usage: node scripts/patch-starblast-launcher.js <launcher-install-or-resources-dir>');
+  const args = process.argv.slice(2).filter(function (a) { return !a.startsWith('--'); });
+  let input;
+  try {
+    input = resolveLauncherInstall(args[0] || '', ROOT);
+  } catch (err) {
+    console.error(err.message || err);
     process.exit(1);
   }
 
@@ -94,8 +112,8 @@ function main() {
   const steamPath = path.join(resources, 'steam.js');
   const tmpDir = path.join(ROOT, '.launcher-patch-tmp');
 
-  console.log('Building mods bundle...');
-  const bundle = buildBundle();
+  console.log('Launcher: ' + input);
+  const bundle = loadBundle();
 
   if (fs.existsSync(asarPath)) {
     console.log('Extracting app.asar...');
@@ -117,6 +135,7 @@ function main() {
 
   console.log('\nDone. Restart Starblast Launcher.');
   console.log('Note: personal use only — do not redistribute the patched launcher (license).');
+  saveLauncherPath(ROOT, input);
 }
 
 main();
