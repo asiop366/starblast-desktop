@@ -11,15 +11,13 @@ echo.
 echo ============================================
 echo  Verification mods Starblast Desktop
 echo ============================================
-echo.
 
-"%NODE%" -e "const fs=require('fs');const p='dist/sb-desktop-mods.launcher.bundle.js';if(!fs.existsSync(p)){console.log('ERREUR: pas de bundle local. Lance UPDATE-LAUNCHER.bat');process.exit(1)}const b=fs.readFileSync(p,'utf8');const m=b.match(/__SB_DESKTOP_MODS_VERSION = \"([^\"]+)\"/);console.log('Version bundle local:',m?m[1]:'inconnue');console.log('Couleurs vaisseau:',b.indexOf('sb-ship-color-bar')>=0?'OK':'MANQUANT');console.log('Save parametres:',b.indexOf('hookSettingsPersistence')>=0?'OK':'MANQUANT');console.log('Taille:',(b.length/1024).toFixed(1),'KB');"
+"%NODE%" scripts\verify-mods.js
 if errorlevel 1 goto Fail
 
-echo.
 echo Dans le jeu (F12 console navigateur):
 echo   window.__SB_DESKTOP_MODS_VERSION
-echo doit afficher la version ci-dessus.
+echo doit afficher la meme version.
 echo.
 pause
 exit /b 0
@@ -35,13 +33,26 @@ if exist "%ProgramFiles%\nodejs\node.exe" (
   set "NODE=%ProgramFiles%\nodejs\node.exe"
   goto :eof
 )
+if exist "%ProgramFiles(x86)%\nodejs\node.exe" (
+  set "NODE=%ProgramFiles(x86)%\nodejs\node.exe"
+  goto :eof
+)
+if exist "%LocalAppData%\Programs\node\node.exe" (
+  set "NODE=%LocalAppData%\Programs\node\node.exe"
+  goto :eof
+)
 exit /b 1
 
 :NoNode
-echo Node.js requis.
+echo.
+echo ERREUR: Node.js introuvable. Installe https://nodejs.org/
 pause
 exit /b 1
 
 :Fail
+echo.
+echo Verification echouee.
+echo Lance UPDATE-LAUNCHER.bat puis reessaie.
+echo.
 pause
 exit /b 1

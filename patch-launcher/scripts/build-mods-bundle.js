@@ -7,8 +7,21 @@ const path = require('path');
 
 const ROOT = path.join(__dirname, '..');
 const launcherMode = process.argv.indexOf('--launcher') >= 0;
-const pkg = require(path.join(ROOT, 'package.json'));
-const modsVersion = process.env.SB_MODS_VERSION || pkg.version;
+
+function resolveModsVersion(root) {
+  if (process.env.SB_MODS_VERSION) return process.env.SB_MODS_VERSION;
+  const pkgPath = path.join(root, 'package.json');
+  if (fs.existsSync(pkgPath)) {
+    return JSON.parse(fs.readFileSync(pkgPath, 'utf8')).version;
+  }
+  const versionPath = path.join(root, 'mods-version.txt');
+  if (fs.existsSync(versionPath)) {
+    return fs.readFileSync(versionPath, 'utf8').trim();
+  }
+  return '0.0.0';
+}
+
+const modsVersion = resolveModsVersion(ROOT);
 const OUT = path.join(
   ROOT,
   'dist',

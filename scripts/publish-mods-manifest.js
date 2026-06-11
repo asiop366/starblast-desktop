@@ -71,6 +71,9 @@ if (launcherSha256) {
 const manifestPath = path.join(ROOT, 'mods-manifest.json');
 fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n');
 
+const patchLauncherVersionPath = path.join(ROOT, 'patch-launcher', 'mods-version.txt');
+fs.writeFileSync(patchLauncherVersionPath, version + '\n');
+
 console.log('');
 console.log('Published mod release v' + version);
 console.log('  Bundle: releases/' + version + '/' + bundleName);

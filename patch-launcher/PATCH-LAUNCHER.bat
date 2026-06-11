@@ -14,8 +14,12 @@ echo ============================================
 echo.
 
 echo [1/3] Preparation du bundle...
-"%NODE%" scripts\build-mods-bundle.js --launcher
-if errorlevel 1 goto Fail
+if exist "dist\sb-desktop-mods.launcher.bundle.js" (
+  echo   Bundle deja present dans dist\
+) else (
+  "%NODE%" scripts\build-mods-bundle.js --launcher
+  if errorlevel 1 goto Fail
+)
 
 set "LAUNCHER="
 
