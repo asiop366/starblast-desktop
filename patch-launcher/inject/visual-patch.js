@@ -176,6 +176,31 @@
     return '#' + ('000000' + ((r << 16) | (g << 8) | b).toString(16)).slice(-6);
   }
 
+  function darkenHex(hex, amount) {
+    var n = hexToInt(hex);
+    var r = Math.max(0, ((n >> 16) & 255) - amount);
+    var g = Math.max(0, ((n >> 8) & 255) - amount);
+    var b = Math.max(0, (n & 255) - amount);
+    return '#' + ('000000' + ((r << 16) | (g << 8) | b).toString(16)).slice(-6);
+  }
+
+  function getLeaderboardAccent() {
+    var raw = readSbParam('sb_lb_color', undefined);
+    if (raw !== undefined && raw !== null && raw !== false && raw !== 'false') {
+      return hexToCss(String(raw));
+    }
+    var s = getSettings();
+    return hexToCss(s.leaderboardColor || DEFAULTS.leaderboardColor);
+  }
+
+  function darkFillFromAccent(accent) {
+    var n = hexToInt(accent);
+    var r = Math.max(0, Math.floor(((n >> 16) & 255) * 0.06));
+    var g = Math.max(0, Math.floor(((n >> 8) & 255) * 0.06));
+    var b = Math.max(0, Math.floor((n & 255) * 0.06));
+    return 'rgb(' + r + ',' + g + ',' + b + ')';
+  }
+
   function rgbaFromHex(hex, alpha) {
     var n = hexToInt(hex);
     return 'rgba(' + ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + alpha + ')';
@@ -201,6 +226,7 @@
   applyColorsFromSettings();
   window.addEventListener('sbDesktopSettingsChanged', function () {
     applyColorsFromSettings();
+    galaxyPatternCache = {};
     sharedMaterialScanDone = false;
     scorePanelHooked = false;
     refreshGemMaterials();
@@ -462,17 +488,37 @@
     }
   }
 
+  function hudColorBuffer(target) {
+    if (!target) return null;
+    if (target.attributes && target.attributes.color && target.attributes.color.array) {
+      return target.attributes.color.array;
+    }
+    if (target.color) return target.color;
+    return null;
+  }
+
+  function hudAttrArray(target, name, fallbackKey) {
+    if (!target) return null;
+    if (target.attributes && target.attributes[name] && target.attributes[name].array) {
+      return target.attributes[name].array;
+    }
+    if (fallbackKey && target[fallbackKey]) return target[fallbackKey];
+    return null;
+  }
+
   function applyHudBarNeon(geom, figures, startIndex, enabled, fillHex) {
     if (!enabled) return;
 
-    var colors = geom.attributes.color.array;
-    var opac = geom.attributes.opac && geom.attributes.opac.array;
-    var sizes = geom.attributes.Ol11I && geom.attributes.Ol11I.array;
+    var colors = hudColorBuffer(geom);
+    if (!colors) return;
+    var opac = hudAttrArray(geom, 'opac', 'opac');
+    var sizes = hudAttrArray(geom, 'Ol11I', 'Ol11I');
+    var verts = hudAttrArray(geom, 'position', 'vertices');
     var glowRgb = neonRgbFromHex(fillHex);
     var hotRgb = [
-      Math.min(1, glowRgb[0] + 0.18),
-      Math.min(1, glowRgb[1] + 0.18),
-      Math.min(1, glowRgb[2] + 0.18)
+      Math.min(1, glowRgb[0] * 1.35 + 0.25),
+      Math.min(1, glowRgb[1] * 1.35 + 0.25),
+      Math.min(1, glowRgb[2] * 1.35 + 0.25)
     ];
     var end = startIndex + HUD_DISPLAY_SIZE;
 
@@ -483,23 +529,34 @@
         colors[3 * i + 1] = hotRgb[1];
         colors[3 * i + 2] = hotRgb[2];
         if (opac) opac[i] = 1;
-        if (sizes) sizes[i] = 0.038;
+        if (sizes) sizes[i] = 0.072;
+        if (verts) verts[3 * i + 2] = 0;
       } else if (fig === 0) {
-        colors[3 * i] = glowRgb[0] * 0.12;
-        colors[3 * i + 1] = glowRgb[1] * 0.12;
-        colors[3 * i + 2] = glowRgb[2] * 0.12;
-        if (opac) opac[i] = 0.85;
-      } else if (fig === 11) {
-        colors[3 * i] = 1;
-        colors[3 * i + 1] = 1;
-        colors[3 * i + 2] = 1;
-        if (sizes) sizes[i] = Math.max(sizes[i] || 0.02, 0.028);
+        colors[3 * i] = Math.min(1, glowRgb[0] * 0.55 + 0.08);
+        colors[3 * i + 1] = Math.min(1, glowRgb[1] * 0.55 + 0.08);
+        colors[3 * i + 2] = Math.min(1, glowRgb[2] * 0.55 + 0.08);
+        if (opac) opac[i] = 0.95;
+        if (sizes) sizes[i] = 0.055;
+        if (verts) verts[3 * i + 2] = 0;
+      } else if (fig === 11 || fig === 12 || fig === 13) {
+        colors[3 * i] = hotRgb[0];
+        colors[3 * i + 1] = hotRgb[1];
+        colors[3 * i + 2] = hotRgb[2];
+        if (sizes) sizes[i] = Math.max(sizes[i] || 0.02, 0.04);
+        if (opac) opac[i] = 1;
       } else if (fig > 0 && fig !== 16) {
-        colors[3 * i] = Math.min(1, glowRgb[0] * 0.55 + 0.25);
-        colors[3 * i + 1] = Math.min(1, glowRgb[1] * 0.55 + 0.25);
-        colors[3 * i + 2] = Math.min(1, glowRgb[2] * 0.55 + 0.25);
+        colors[3 * i] = Math.min(1, glowRgb[0] * 0.75 + 0.2);
+        colors[3 * i + 1] = Math.min(1, glowRgb[1] * 0.75 + 0.2);
+        colors[3 * i + 2] = Math.min(1, glowRgb[2] * 0.75 + 0.2);
+        if (sizes) sizes[i] = Math.max(sizes[i] || 0.015, 0.032);
+        if (opac) opac[i] = 1;
       }
     }
+  }
+
+  function isScoreboardRowRect(ctx, rw, rh) {
+    if (!ctx || !ctx.canvas) return false;
+    return rw >= 60 && rh >= 6 && rh <= Math.max(40, ctx.canvas.height / 2.5);
   }
 
   function patchHudGeometry(geom) {
@@ -522,16 +579,30 @@
   }
 
   function hookFiguresInstance(fig) {
-    if (!fig || fig.__sbBarHooked || typeof fig.setBarColor !== 'function') return;
+    if (!fig || fig.__sbBarHooked) return;
 
-    var originalSetBarColor = fig.setBarColor;
-    fig.setBarColor = function (start, r, g, b) {
-      var out = originalSetBarColor.apply(this, arguments);
-      if (start === this.crystal_index || start === this.generator_index || start === this.shield_index) {
-        patchFiguresInstance(this);
-      }
-      return out;
-    };
+    if (typeof fig.setBarColor === 'function') {
+      var originalSetBarColor = fig.setBarColor;
+      fig.setBarColor = function (start, r, g, b) {
+        var out = originalSetBarColor.apply(this, arguments);
+        if (start === this.crystal_index || start === this.generator_index || start === this.shield_index) {
+          patchFiguresInstance(this);
+        }
+        return out;
+      };
+    }
+
+    if (typeof fig.setBar === 'function') {
+      var originalSetBar = fig.setBar;
+      fig.setBar = function (start, value, max) {
+        var out = originalSetBar.apply(this, arguments);
+        if (start === this.crystal_index || start === this.generator_index || start === this.shield_index) {
+          patchFiguresInstance(this);
+        }
+        return out;
+      };
+    }
+
     fig.__sbBarHooked = true;
   }
 
@@ -545,12 +616,22 @@
     paintHudBar(fig.color, fig.figure, fig.generator_index, COLORS.pink, COLORS.black);
     paintHudBar(fig.color, fig.figure, fig.shield_index, COLORS.cyan, COLORS.black);
 
+    applyHudBarNeon(fig, fig.figure, fig.crystal_index, s.gemBarNeon !== false, s.gemColor);
+    applyHudBarNeon(fig, fig.figure, fig.generator_index, s.energyBarNeon !== false, s.energyColor);
+    applyHudBarNeon(fig, fig.figure, fig.shield_index, s.shieldBarNeon !== false, s.shieldColor);
+
     if (fig.geometry && isHudGeometry(fig.geometry)) {
       applyHudBarNeon(fig.geometry, fig.figure, fig.crystal_index, s.gemBarNeon !== false, s.gemColor);
       applyHudBarNeon(fig.geometry, fig.figure, fig.generator_index, s.energyBarNeon !== false, s.energyColor);
       applyHudBarNeon(fig.geometry, fig.figure, fig.shield_index, s.shieldBarNeon !== false, s.shieldColor);
       var colAttr = fig.geometry.getAttribute && fig.geometry.getAttribute('color');
       if (colAttr) colAttr.needsUpdate = true;
+      var opAttr = fig.geometry.getAttribute && fig.geometry.getAttribute('opac');
+      if (opAttr) opAttr.needsUpdate = true;
+      var sizeAttr = fig.geometry.getAttribute && fig.geometry.getAttribute('Ol11I');
+      if (sizeAttr) sizeAttr.needsUpdate = true;
+      var posAttr = fig.geometry.getAttribute && fig.geometry.getAttribute('position');
+      if (posAttr) posAttr.needsUpdate = true;
     }
   }
 
@@ -785,13 +866,14 @@
   }
 
   function getPlayerName() {
-    var inp = document.querySelector('#player input');
-    if (inp && inp.value && inp.value.trim()) return inp.value.trim();
-
     var client = findGameClient();
     if (client && client.player_name && String(client.player_name).trim()) {
       return String(client.player_name).trim();
     }
+
+    var inp = document.querySelector('#player input') ||
+      document.querySelector('.modal input[type="text"]');
+    if (inp && inp.value && inp.value.trim()) return inp.value.trim();
 
     if (window.__sbDesktopPlayerName) return String(window.__sbDesktopPlayerName).trim();
     return '';
@@ -828,11 +910,12 @@
     var str = String(text).trim();
     if (!/^\d+\.\s+/.test(str)) return false;
     var rowName = str.replace(/^\d+\.\s+/, '').trim();
+    rowName = rowName.replace(/^\[[^\]]+\]\s*/, '').trim();
     return namesMatch(rowName, name);
   }
 
   function galaxySeed(w, h, accentHex) {
-    var accent = hexToCss(accentHex || DEFAULTS.leaderboardColor);
+    var accent = hexToCss(accentHex || getLeaderboardAccent());
     var key = w + 'x' + h + ':' + accent;
     if (galaxyPatternCache[key]) return galaxyPatternCache[key];
 
@@ -840,32 +923,39 @@
     canvas.width = w;
     canvas.height = h;
     var g = canvas.getContext('2d');
+    var n = hexToInt(accent);
 
-    g.fillStyle = '#12001c';
+    g.fillStyle = 'rgb(' +
+      Math.max(0, Math.floor(((n >> 16) & 255) * 0.07)) + ',' +
+      Math.max(0, Math.floor(((n >> 8) & 255) * 0.07)) + ',' +
+      Math.max(0, Math.floor((n & 255) * 0.07)) + ')';
     g.fillRect(0, 0, w, h);
 
     var blobs = [
-      { x: 0.12 * w, y: 0.48 * h, r: 0.58 * w, inner: 'rgba(255,30,190,0.92)', mid: 'rgba(140,0,120,0.45)', outer: 'rgba(30,0,45,0)' },
-      { x: 0.42 * w, y: 0.42 * h, r: 0.52 * w, inner: 'rgba(210,0,255,0.78)', mid: 'rgba(90,0,160,0.38)', outer: 'rgba(20,0,35,0)' },
-      { x: 0.72 * w, y: 0.52 * h, r: 0.48 * w, inner: 'rgba(255,60,170,0.72)', mid: 'rgba(120,0,100,0.35)', outer: 'rgba(25,0,40,0)' },
-      { x: 0.28 * w, y: 0.62 * h, r: 0.38 * w, inner: 'rgba(160,0,220,0.55)', mid: 'rgba(60,0,90,0.28)', outer: 'rgba(0,0,0,0)' },
-      { x: 0.58 * w, y: 0.58 * h, r: 0.32 * w, inner: 'rgba(255,100,220,0.45)', mid: 'rgba(80,0,120,0.22)', outer: 'rgba(0,0,0,0)' }
+      { x: 0.12, y: 0.48, r: 0.58, hot: 25, a0: 0.88, a1: 0.40 },
+      { x: 0.40, y: 0.42, r: 0.52, hot: 10, a0: 0.76, a1: 0.32 },
+      { x: 0.70, y: 0.52, r: 0.48, hot: 18, a0: 0.70, a1: 0.28 },
+      { x: 0.28, y: 0.62, r: 0.36, hot: 5, a0: 0.58, a1: 0.22 },
+      { x: 0.55, y: 0.58, r: 0.30, hot: 35, a0: 0.48, a1: 0.18 }
     ];
 
     for (var b = 0; b < blobs.length; b++) {
       var blob = blobs[b];
-      var grad = g.createRadialGradient(blob.x, blob.y, 0, blob.x, blob.y, blob.r);
-      grad.addColorStop(0, blob.inner);
-      grad.addColorStop(0.45, blob.mid || 'rgba(80,0,120,0.25)');
-      grad.addColorStop(1, blob.outer);
+      var bx = blob.x * w;
+      var by = blob.y * h;
+      var br = blob.r * w;
+      var grad = g.createRadialGradient(bx, by, 0, bx, by, br);
+      grad.addColorStop(0, rgbaFromHex(lightenHex(accent, blob.hot), blob.a0));
+      grad.addColorStop(0.45, rgbaFromHex(accent, blob.a1));
+      grad.addColorStop(1, rgbaFromHex(darkenHex(accent, 60), 0));
       g.fillStyle = grad;
       g.fillRect(0, 0, w, h);
     }
 
     var wash = g.createLinearGradient(0, 0, w, 0);
-    wash.addColorStop(0, rgbaFromHex(accent, 0.18));
-    wash.addColorStop(0.5, rgbaFromHex(accent, 0.08));
-    wash.addColorStop(1, rgbaFromHex(accent, 0.18));
+    wash.addColorStop(0, rgbaFromHex(accent, 0.22));
+    wash.addColorStop(0.5, rgbaFromHex(accent, 0.10));
+    wash.addColorStop(1, rgbaFromHex(accent, 0.22));
     g.fillStyle = wash;
     g.fillRect(0, 0, w, h);
 
@@ -875,7 +965,7 @@
       var sy = ((i * 53 + 7) % 1000) / 1000 * h;
       var alpha = 0.35 + ((i * 31) % 65) / 100;
       var radius = 0.35 + ((i * 17) % 18) / 10;
-      g.fillStyle = 'rgba(255,220,255,' + alpha + ')';
+      g.fillStyle = rgbaFromHex(lightenHex(accent, 85), alpha);
       g.beginPath();
       g.arc(sx, sy, radius, 0, Math.PI * 2);
       g.fill();
@@ -888,7 +978,7 @@
   function drawGalaxyRow(ctx, barTop, barH, origFillRect, accentHex) {
     var w = ctx.canvas.width;
     var h = Math.max(24, Math.ceil(barH));
-    var accent = hexToCss(accentHex || DEFAULTS.leaderboardColor);
+    var accent = hexToCss(accentHex || getLeaderboardAccent());
     var pattern = galaxySeed(w, h, accent);
     var rowY = barTop + 2;
     var rowH = barH - 4;
@@ -917,15 +1007,18 @@
   }
 
   function drawLeaderboardNeonName(ctx, text, x, y, maxWidth, origFillText, origFillRect, origStrokeText) {
-    var s = getSettings();
+    if (!getSettings().leaderboardNeon) {
+      return origFillText.call(ctx, text, x, y, maxWidth);
+    }
+
     var canvasH = ctx.canvas && ctx.canvas.height ? ctx.canvas.height : 440;
     var rowH = canvasH / 11;
     var h = Math.max(16, rowH * 0.85);
-    var neon = hexToCss(s.leaderboardColor || DEFAULTS.leaderboardColor);
+    var neon = getLeaderboardAccent();
     var neonCore = lightenHex(neon, 45);
     var neonHot = lightenHex(neon, 25);
     var neonBloom = lightenHex(neon, 70);
-    var darkFill = '#0a0012';
+    var darkFill = darkFillFromAccent(neon);
     var barTop;
     var barH;
     if (ctx.__sbPlayerRowRect) {
@@ -962,7 +1055,7 @@
     ctx.shadowBlur = 52;
     origStrokeText.call(ctx, text, x, y, maxWidth);
 
-    // Couche 2 — glow magenta moyen
+    // Couche 2 — glow moyen (couleur paramètres)
     ctx.lineWidth = Math.max(5.5, h * 0.22);
     ctx.strokeStyle = rgbaFromHex(neonHot, 0.72);
     ctx.shadowColor = neonHot;
@@ -1024,19 +1117,19 @@
       };
 
       ctx.fillRect = function (rx, ry, rw, rh) {
-        if (getSettings().leaderboardNeon &&
-            rw >= ctx.canvas.width * 0.88 &&
-            rh >= 6 && rh <= ctx.canvas.height / 4) {
+        if (getSettings().leaderboardNeon && isScoreboardRowRect(ctx, rw, rh)) {
           ctx.__sbPlayerRowRect = { x: rx, y: ry, w: rw, h: rh };
         }
         return origFillRect.apply(ctx, arguments);
       };
 
       try {
+        ctx.__sbScoreboardDraw = true;
         return originalDraw.call(this, ctx);
       } finally {
         ctx.fillText = origFillText;
         ctx.fillRect = origFillRect;
+        ctx.__sbScoreboardDraw = false;
       }
     };
     panel.__sbLbInstHooked = true;
@@ -1082,19 +1175,19 @@
             };
 
             ctx.fillRect = function (rx, ry, rw, rh) {
-              if (getSettings().leaderboardNeon &&
-                  rw >= ctx.canvas.width * 0.88 &&
-                  rh >= 6 && rh <= ctx.canvas.height / 4) {
+              if (getSettings().leaderboardNeon && isScoreboardRowRect(ctx, rw, rh)) {
                 ctx.__sbPlayerRowRect = { x: rx, y: ry, w: rw, h: rh };
               }
               return origFillRect.apply(ctx, arguments);
             };
 
             try {
+              ctx.__sbScoreboardDraw = true;
               return originalDraw.call(this, ctx);
             } finally {
               ctx.fillText = origFillText;
               ctx.fillRect = origFillRect;
+              ctx.__sbScoreboardDraw = false;
             }
           };
           obj.prototype.__sbLbProtoHooked = true;
@@ -1146,9 +1239,60 @@
     }
   }
 
+  function hookFiguresPrototype() {
+    var stack = [window];
+    var seen = typeof WeakSet === 'function' ? new WeakSet() : null;
+
+    while (stack.length) {
+      var obj = stack.pop();
+      if (!obj || typeof obj !== 'object') continue;
+      if (seen) {
+        if (seen.has(obj)) continue;
+        seen.add(obj);
+      }
+
+      if (typeof obj === 'function' && obj.prototype &&
+          typeof obj.prototype.setBar === 'function' &&
+          typeof obj.prototype.setBarColor === 'function' &&
+          typeof obj.prototype.initBar === 'function' &&
+          !obj.prototype.__sbFiguresProtoHooked) {
+        var proto = obj.prototype;
+        var origSetBar = proto.setBar;
+        proto.setBar = function (start, value, max) {
+          var out = origSetBar.apply(this, arguments);
+          if (start === this.crystal_index || start === this.generator_index || start === this.shield_index) {
+            patchFiguresInstance(this);
+          }
+          return out;
+        };
+        var origSetBarColor = proto.setBarColor;
+        proto.setBarColor = function (start, r, g, b) {
+          var out = origSetBarColor.apply(this, arguments);
+          if (start === this.crystal_index || start === this.generator_index || start === this.shield_index) {
+            patchFiguresInstance(this);
+          }
+          return out;
+        };
+        proto.__sbFiguresProtoHooked = true;
+      }
+
+      if (typeof obj === 'function' && obj.prototype) stack.push(obj.prototype);
+      var keys;
+      try { keys = Object.keys(obj); } catch (e) { continue; }
+      for (var i = 0; i < keys.length && i < 35; i++) {
+        try {
+          var child = obj[keys[i]];
+          if (child && typeof child === 'object') stack.push(child);
+          if (typeof child === 'function') stack.push(child);
+        } catch (e) { /* ignore */ }
+      }
+    }
+  }
+
   function hookScorePanelDraw() {
     hookScoreboardFromClient();
     hookScorePanelPrototype();
+    hookFiguresPrototype();
     var stack = [window];
     var seen = typeof WeakSet === 'function' ? new WeakSet() : null;
 
@@ -1194,19 +1338,19 @@
           };
 
           ctx.fillRect = function (rx, ry, rw, rh) {
-            if (getSettings().leaderboardNeon &&
-                rw >= ctx.canvas.width * 0.88 &&
-                rh >= 6 && rh <= ctx.canvas.height / 4) {
+            if (getSettings().leaderboardNeon && isScoreboardRowRect(ctx, rw, rh)) {
               ctx.__sbPlayerRowRect = { x: rx, y: ry, w: rw, h: rh };
             }
             return origFillRect.apply(ctx, arguments);
           };
 
           try {
+            ctx.__sbScoreboardDraw = true;
             return originalDraw.call(this, ctx);
           } finally {
             ctx.fillText = origFillText;
             ctx.fillRect = origFillRect;
+            ctx.__sbScoreboardDraw = false;
           }
         };
         proto.__sbLbHooked = true;
@@ -1242,6 +1386,13 @@
         );
       }
       return origFillText.apply(this, arguments);
+    };
+
+    CanvasRenderingContext2D.prototype.fillRect = function (rx, ry, rw, rh) {
+      if (getSettings().leaderboardNeon && this.__sbScoreboardDraw && isScoreboardRowRect(this, rw, rh)) {
+        this.__sbPlayerRowRect = { x: rx, y: ry, w: rw, h: rh };
+      }
+      return origFillRect.apply(this, arguments);
     };
   }
 

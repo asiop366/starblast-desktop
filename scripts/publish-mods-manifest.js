@@ -41,7 +41,9 @@ if (launcherBundle.indexOf('window.__SB_DESKTOP_MODS_VERSION = ' + JSON.stringif
 if (launcherBundle.indexOf('hookSettingsPersistence') < 0) {
   throw new Error('Launcher bundle missing settings persistence hooks');
 }
-if (launcherBundle.indexOf('data-sb-ship-colors", "3"') < 0 &&
+if (launcherBundle.indexOf('data-sb-ship-colors", "4"') < 0 &&
+    launcherBundle.indexOf("data-sb-ship-colors', '4'") < 0 &&
+    launcherBundle.indexOf('data-sb-ship-colors", "3"') < 0 &&
     launcherBundle.indexOf("data-sb-ship-colors', '3'") < 0) {
   throw new Error('Launcher bundle missing welcome screen color bar fix');
 }

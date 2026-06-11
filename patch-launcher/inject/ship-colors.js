@@ -21,28 +21,163 @@
   var NEUTRAL_BY_ID = {};
   for (var n = 0; n < NEUTRALS.length; n++) NEUTRAL_BY_ID[NEUTRALS[n].id] = NEUTRALS[n];
 
-  function findWelcomeHost() {
-    var stack = [window];
+  var shipExporterCache = null;
+  var badgeRendererCache = null;
+  var hsvConverterCache = null;
+  var shipExporterHooked = false;
+
+  function walkObjects(root, visit, maxDepth) {
+    var stack = [{ obj: root, depth: 0 }];
     var seen = typeof WeakSet === 'function' ? new WeakSet() : null;
 
     while (stack.length) {
-      var obj = stack.pop();
-      if (!obj || typeof obj !== 'object') continue;
+      var item = stack.pop();
+      var obj = item.obj;
+      var depth = item.depth;
+      if (!obj || depth > maxDepth) continue;
       if (seen) {
         if (seen.has(obj)) continue;
         seen.add(obj);
       }
-      if (typeof obj.setColor === 'function' && obj.game_modes) return obj;
+
+      var hit = visit(obj, depth);
+      if (hit) return hit;
+
+      if (typeof obj !== 'object' && typeof obj !== 'function') continue;
       var keys;
       try { keys = Object.keys(obj); } catch (e) { continue; }
-      for (var i = 0; i < keys.length && i < 40; i++) {
+      for (var i = 0; i < keys.length && i < 50; i++) {
         try {
           var child = obj[keys[i]];
-          if (child && typeof child === 'object') stack.push(child);
+          if (child && (typeof child === 'object' || typeof child === 'function')) {
+            stack.push({ obj: child, depth: depth + 1 });
+          }
         } catch (e) { /* ignore */ }
       }
     }
     return null;
+  }
+
+  function findWelcomeHost() {
+    return walkObjects(window, function (obj) {
+      if (typeof obj.setColor === 'function' && obj.game_modes) return obj;
+      return null;
+    }, 7);
+  }
+
+  function matchShipExporter(obj) {
+    if (!obj) return null;
+    if (typeof obj.exportThumbnail === 'function') return obj;
+    return null;
+  }
+
+  function findShipExporter() {
+    if (shipExporterCache && shipExporterCache.exportThumbnail) return shipExporterCache;
+
+    var direct = matchShipExporter(typeof window !== 'undefined' ? window.lO1Ol : null);
+    if (direct) {
+      shipExporterCache = direct;
+      return direct;
+    }
+
+    var host = findWelcomeHost();
+    if (host && host.lI1IO) {
+      var fromClient = walkObjects(host.lI1IO, matchShipExporter, 12);
+      if (fromClient) {
+        shipExporterCache = fromClient;
+        return fromClient;
+      }
+    }
+
+    var fromWindow = walkObjects(window, matchShipExporter, 12);
+    if (fromWindow) {
+      shipExporterCache = fromWindow;
+      return fromWindow;
+    }
+    return null;
+  }
+
+  function findHsvConverter() {
+    if (hsvConverterCache && hsvConverterCache.hsvToRgbHex) return hsvConverterCache;
+    var found = walkObjects(window, function (obj) {
+      if (obj && typeof obj.hsvToRgbHex === 'function') return obj;
+      return null;
+    }, 12);
+    if (found) hsvConverterCache = found;
+    return found;
+  }
+
+  function applyNeutralCanvasFilter(node, neu) {
+    if (!node || !neu) return node;
+
+    var src = node;
+    var canvas = node.tagName === 'CANVAS' ? node : null;
+
+    if (!canvas && node.tagName === 'IMG' && node.complete && node.naturalWidth > 0) {
+      canvas = document.createElement('canvas');
+      canvas.width = node.naturalWidth;
+      canvas.height = node.naturalHeight;
+      var c0 = canvas.getContext('2d');
+      c0.drawImage(node, 0, 0);
+      node = canvas;
+    }
+
+    if (canvas) {
+      var w = canvas.width;
+      var h = canvas.height;
+      if (w > 0 && h > 0) {
+        var tmp = document.createElement('canvas');
+        tmp.width = w;
+        tmp.height = h;
+        var tctx = tmp.getContext('2d');
+        tctx.filter = neu.filter;
+        tctx.drawImage(canvas, 0, 0);
+        var ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, w, h);
+        ctx.drawImage(tmp, 0, 0);
+      }
+      canvas.style.filter = neu.filter;
+      return canvas;
+    }
+
+    if (src && src.style) src.style.filter = neu.filter;
+    return src;
+  }
+
+  function hookShipExporter() {
+    if (shipExporterHooked) return;
+    var exporter = findShipExporter();
+    if (!exporter || exporter.__sbShipColorWrapped) return;
+
+    var original = exporter.exportThumbnail.bind(exporter);
+    exporter.exportThumbnail = function (code, hue, finish, laser, size) {
+      var neutralId = localStorage.getItem('sb_ship_neutral') || '';
+      var neu = neutralId && NEUTRAL_BY_ID[neutralId];
+      var shipHue = parseInt(hue, 10);
+      if (isNaN(shipHue)) shipHue = 0;
+      if (neu) shipHue = neu.hue;
+      var thumb = original(code, shipHue, finish, laser, size);
+      if (neu && thumb) thumb = applyNeutralCanvasFilter(thumb, neu);
+      return thumb;
+    };
+    exporter.__sbShipColorWrapped = true;
+    shipExporterCache = exporter;
+    shipExporterHooked = true;
+  }
+
+  function findBadgeRenderer() {
+    if (badgeRendererCache) return badgeRendererCache;
+
+    var found = walkObjects(window, function (obj) {
+      if (typeof obj !== 'function' || !obj.prototype) return null;
+      if (typeof obj.prototype.toImage === 'function' && typeof obj.prototype.OO0IO === 'function') {
+        return obj;
+      }
+      return null;
+    }, 8);
+
+    if (found) badgeRendererCache = found;
+    return found;
   }
 
   function getCustomParts(host) {
@@ -69,25 +204,62 @@
     return { hue: hue, neutral: '' };
   }
 
-  function refreshShipPreview() {
-    var preview = document.querySelector('.modal .shippreview') ||
+  function findShipPreviewNode() {
+    return document.querySelector('.modal .shippreview') ||
       document.querySelector('.modal td.shippreview') ||
       document.querySelector('td.shippreview') ||
       document.querySelector('.shippreview');
-    if (!preview || typeof window.lO1Ol === 'undefined' || !window.lO1Ol.exportThumbnail) return;
+  }
 
+  function syncCustomHue(hue, host) {
+    host = host || findWelcomeHost();
+    if (!host || !host.lI1IO || !host.lI1IO.I0OlO) return;
+    var parsed = parseInt(hue, 10);
+    if (isNaN(parsed)) parsed = 0;
+    if (host.lI1IO.I0OlO.custom) host.lI1IO.I0OlO.custom.hue = parsed;
+    if (host.lI1IO.I0OlO.hue !== undefined) host.lI1IO.I0OlO.hue = parsed;
+  }
+
+  function refreshWelcomeCanvasShip(hue, host) {
+    host = host || findWelcomeHost();
+    if (!host || !host.lI1IO || !host.lI1IO.display || !host.lI1IO.display.screen) return;
+    var screen = host.lI1IO.display.screen;
+    if (typeof screen.setHue === 'function') screen.setHue(parseInt(hue, 10) || 0);
+  }
+
+  function refreshShipPreview() {
+    hookShipExporter();
+    var exporter = findShipExporter();
+    if (!exporter) return;
+
+    var host = findWelcomeHost();
     var sel = readSelection();
-    var parts = getCustomParts(findWelcomeHost());
-    preview.innerHTML = '';
-    var thumb = window.lO1Ol.exportThumbnail(101, sel.hue, parts.finish, parts.laser, 192);
-    preview.appendChild(thumb);
+    var parts = getCustomParts(host);
+    var shipHue = parseInt(localStorage.getItem('shipColor') || String(sel.hue), 10);
+    if (isNaN(shipHue)) shipHue = sel.hue;
+    var neu = sel.neutral && NEUTRAL_BY_ID[sel.neutral];
 
-    if (sel.neutral) {
-      var neu = NEUTRAL_BY_ID[sel.neutral];
-      if (neu) {
-        var nodes = preview.querySelectorAll('canvas, img');
-        for (var i = 0; i < nodes.length; i++) nodes[i].style.filter = neu.filter;
+    syncCustomHue(shipHue, host);
+    refreshWelcomeCanvasShip(shipHue, host);
+
+    var preview = findShipPreviewNode();
+    if (preview) {
+      preview.innerHTML = '';
+      var thumb = exporter.exportThumbnail(101, shipHue, parts.finish, parts.laser, 192);
+      if (thumb) {
+        if (neu) thumb = applyNeutralCanvasFilter(thumb, neu);
+        preview.appendChild(thumb);
       }
+    }
+
+    var logo = document.querySelector('.ecpverifiedlogo');
+    var Badge = findBadgeRenderer();
+    if (logo && Badge && host && host.lI1IO && host.lI1IO.I0OlO && host.lI1IO.I0OlO.custom) {
+      try {
+        logo.innerHTML = '';
+        var badge = new Badge(112, host.lI1IO.I0OlO.custom);
+        if (badge.canvas) logo.appendChild(badge.canvas);
+      } catch (e) { /* ignore */ }
     }
   }
 
@@ -125,19 +297,30 @@
 
   function syncNativeColorSpan(hue) {
     var host = findWelcomeHost();
-    if (!host || typeof host.setColor !== 'function') return;
-
-    var native = document.querySelector('#colors span[data-hue="' + hue + '"]');
-    if (native) {
-      host.setColor(hue);
-      return;
-    }
-
     localStorage.setItem('shipColor', String(hue));
-    var spans = document.querySelectorAll('#colors span[data-hue]');
-    for (var i = 0; i < spans.length; i++) {
-      spans[i].classList.remove('selected');
+
+    if (host && typeof host.setColor === 'function') {
+      var native = document.querySelector('#colors span[data-hue="' + hue + '"]');
+      if (native) {
+        var spans = document.querySelectorAll('#colors span[data-hue]');
+        for (var i = 0; i < spans.length; i++) {
+          spans[i].classList.remove('selected');
+        }
+        native.classList.add('selected');
+      }
+      host.setColor(hue);
     }
+  }
+
+  function hookSetColor(host) {
+    if (!host || host.__sbSetColorHooked || typeof host.setColor !== 'function') return;
+    host.__sbSetColorHooked = true;
+    var original = host.setColor.bind(host);
+    host.setColor = function (hue) {
+      var result = original(hue);
+      refreshShipPreview();
+      return result;
+    };
   }
 
   function applySelection(hue, neutralId) {
@@ -225,7 +408,7 @@
 
       bar = document.createElement('div');
       bar.id = 'sb-ship-color-bar';
-      bar.setAttribute('data-sb-ship-colors', '3');
+      bar.setAttribute('data-sb-ship-colors', '4');
 
       var label = document.createElement('div');
       label.className = 'sb-ship-color-label';
@@ -254,6 +437,8 @@
     var colors = document.getElementById('colors');
     if (colors) colors.style.display = 'none';
 
+    hookSetColor(findWelcomeHost());
+
     var sel = readSelection();
     updateSwatchUI(sel);
     updateAccentUI(sel.hue, sel.neutral);
@@ -279,10 +464,12 @@
   }
 
   function hookNeutralShipTint() {
-    if (window.__sbShipNeutralHook || typeof window.ll0O1 === 'undefined' || !window.ll0O1.hsvToRgbHex) return;
+    if (window.__sbShipNeutralHook) return;
+    var conv = findHsvConverter();
+    if (!conv || !conv.hsvToRgbHex) return;
     window.__sbShipNeutralHook = true;
-    var orig = window.ll0O1.hsvToRgbHex.bind(window.ll0O1);
-    window.ll0O1.hsvToRgbHex = function (h, s, l) {
+    var orig = conv.hsvToRgbHex.bind(conv);
+    conv.hsvToRgbHex = function (h, s, l) {
       var id = localStorage.getItem('sb_ship_neutral');
       var neu = id && NEUTRAL_BY_ID[id];
       if (neu) {
@@ -294,11 +481,13 @@
       }
       return orig(h, s, l);
     };
+    if (typeof window !== 'undefined') window.ll0O1 = conv;
   }
 
   function watch() {
     injectStyles();
     hookNeutralShipTint();
+    hookShipExporter();
     ensureColorBar();
   }
 

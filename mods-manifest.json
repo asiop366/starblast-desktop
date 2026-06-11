@@ -1,8 +1,8 @@
 {
-  "version": "1.1.8",
-  "updatedAt": "2026-06-11T01:09:51.584Z",
-  "bundleUrl": "https://raw.githubusercontent.com/asiop366/starblast-desktop/main/releases/1.1.8/sb-desktop-mods.bundle.js",
-  "bundleSha256": "4e91051f305458fe7ffc5bb2627c56b2928148caeda27cd30e708874f970b484",
-  "launcherBundleUrl": "https://raw.githubusercontent.com/asiop366/starblast-desktop/main/releases/1.1.8/sb-desktop-mods.launcher.bundle.js",
-  "launcherBundleSha256": "acfce8d91eb4103a27322263bbdaf53f54da5bbb26f178f9711123854c1bbc77"
+  "version": "1.1.11",
+  "updatedAt": "2026-06-11T20:26:31.511Z",
+  "bundleUrl": "https://raw.githubusercontent.com/asiop366/starblast-desktop/main/releases/1.1.11/sb-desktop-mods.bundle.js",
+  "bundleSha256": "b66b61e142ba0fcdd48cbee8e334c2362721716fdab5df3d42585936f7c08af4",
+  "launcherBundleUrl": "https://raw.githubusercontent.com/asiop366/starblast-desktop/main/releases/1.1.11/sb-desktop-mods.launcher.bundle.js",
+  "launcherBundleSha256": "682dc3f6f4526dd220a30d5577045016093d49741ae042e08017b2b49a39c71e"
 }

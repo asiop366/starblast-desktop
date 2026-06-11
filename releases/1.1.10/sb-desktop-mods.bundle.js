@@ -1,3 +1,735 @@
+/* Starblast Desktop visual mods v1.1.10 */
+window.__SB_DESKTOP_MODS_VERSION = "1.1.10";
+window.__SB_DESKTOP_CLIENT = true;
+/**
+ * Fullscreen display — window resize patch only (no custom background).
+ */
+(function () {
+  'use strict';
+
+  if (window.__SB_DESKTOP_LAUNCHER_PATCH) return;
+  if (window.__sbDesktopDisplayFix) return;
+  window.__sbDesktopDisplayFix = true;
+
+  function applyCanvasStyle() {
+    if (document.getElementById('sb-desktop-canvas-style')) return;
+
+    var style = document.createElement('style');
+    style.id = 'sb-desktop-canvas-style';
+    style.textContent =
+      'html,body{margin:0!important;padding:0!important;overflow:hidden!important;width:100%!important;height:100%!important;background:#000!important}' +
+      '#content,#home,#home_mobile,#overlay{background:transparent!important}' +
+      'canvas{position:fixed!important;top:0!important;left:0!important;' +
+      'width:100vw!important;height:100vh!important;max-width:none!important;max-height:none!important;' +
+      'display:block!important;touch-action:none}';
+
+    var oldWallpaper = document.getElementById('sb-desktop-wallpaper');
+    if (oldWallpaper) oldWallpaper.remove();
+
+    document.documentElement.appendChild(style);
+  }
+
+  function patchDisplayResize() {
+    var stack = [window];
+    var seen = typeof WeakSet === 'function' ? new WeakSet() : null;
+
+    while (stack.length) {
+      var obj = stack.pop();
+      if (!obj || typeof obj !== 'object') continue;
+      if (seen) {
+        if (seen.has(obj)) continue;
+        seen.add(obj);
+      }
+
+      if (obj.O10ll && typeof obj.resize === 'function' && !obj.__sbResizePatched) {
+        obj.resize = function () {
+          this.width = window.innerWidth;
+          this.height = window.innerHeight;
+          this.rotated = this.width < this.height;
+          this.O10ll.setSize(this.width, this.height);
+          if (this.screen && this.screen.setSize) {
+            this.screen.setSize(this.width, this.height, this.llO0I);
+          }
+          this.fixed = false;
+        };
+        obj.__sbResizePatched = true;
+        obj.resize();
+        return true;
+      }
+
+      var keys;
+      try {
+        keys = Object.keys(obj);
+      } catch (e) {
+        continue;
+      }
+
+      for (var i = 0; i < keys.length && i < 50; i++) {
+        var key = keys[i];
+        if (key === 'parent' || key === 'window' || key === 'top' || key === 'document') continue;
+        try {
+          var child = obj[key];
+          if (child && typeof child === 'object') stack.push(child);
+        } catch (e) {
+          // ignore
+        }
+      }
+    }
+
+    return false;
+  }
+
+  applyCanvasStyle();
+  patchDisplayResize();
+
+  window.addEventListener('resize', patchDisplayResize);
+
+  var tries = 0;
+  var timer = setInterval(function () {
+    tries += 1;
+    if (patchDisplayResize() || tries > 160) clearInterval(timer);
+  }, 250);
+})();
+
+/**
+ * Pre-game settings overlay — gem color & desktop mod options.
+ */
+(function () {
+  'use strict';
+
+  if (window.__sbDesktopSettingsUI) return;
+  window.__sbDesktopSettingsUI = true;
+
+  if (window.__SB_DESKTOP_LAUNCHER_PATCH) {
+    window.__sbDesktopSettings = window.__sbDesktopSettings || {
+      gemColor: '#ffffff',
+      gemWorldGlow: true,
+      gemBarNeon: true,
+      shieldColor: '#00ffff',
+      shieldBarNeon: true,
+      energyColor: '#ff69b4',
+      energyBarNeon: true,
+      leaderboardNeon: true,
+      leaderboardColor: '#ff69b4',
+      fovMultiplier: 1.2
+    };
+    return;
+  }
+
+  var STORAGE_KEY = 'sbDesktopSettings';
+
+  var DEFAULTS = {
+    gemColor: '#ffffff',
+    gemWorldGlow: true,
+    gemBarNeon: true,
+    shieldColor: '#00ffff',
+    shieldBarNeon: true,
+    energyColor: '#ff69b4',
+    energyBarNeon: true,
+    leaderboardNeon: true,
+    leaderboardColor: '#ff69b4',
+    fovMultiplier: 1.2
+  };
+
+  function normalizeSettings(raw) {
+    var s = Object.assign({}, DEFAULTS, raw || {});
+    if (s.gemBarNeon == null && s.gemGlow != null) s.gemBarNeon = !!s.gemGlow;
+    delete s.backgroundImage;
+    delete s.backgroundColor;
+    delete s.gemGlow;
+    return s;
+  }
+
+  function loadSettings() {
+    try {
+      var raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return normalizeSettings({});
+      return normalizeSettings(JSON.parse(raw));
+    } catch (e) {
+      return normalizeSettings({});
+    }
+  }
+
+  function saveSettings(settings) {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(normalizeSettings(settings)));
+    } catch (e) {
+      alert('Impossible de sauvegarder les réglages.');
+      return false;
+    }
+    window.__sbDesktopSettings = normalizeSettings(settings);
+    window.dispatchEvent(new CustomEvent('sbDesktopSettingsChanged', { detail: window.__sbDesktopSettings }));
+    return true;
+  }
+
+  window.__sbDesktopSettings = loadSettings();
+
+  try {
+    var legacy = localStorage.getItem(STORAGE_KEY);
+    if (legacy) {
+      var parsed = JSON.parse(legacy);
+      if (parsed.backgroundColor || parsed.backgroundImage || parsed.gemGlow != null) {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(normalizeSettings(parsed)));
+      }
+    }
+  } catch (e) {
+    // ignore
+  }
+
+  function chk(id, on) {
+    return '<input type="checkbox" id="' + id + '"' + (on ? ' checked' : '') + '>';
+  }
+
+  function colorField(id, label, value) {
+    return '<label class="sb-desk-field"><span>' + label + '</span>' +
+      '<input type="color" id="' + id + '" value="' + value + '"></label>';
+  }
+
+  function checkField(id, label, on) {
+    return '<label class="sb-desk-field sb-desk-check">' + chk(id, on) + '<span>' + label + '</span></label>';
+  }
+
+  function createOverlay() {
+    if (document.getElementById('sb-desktop-settings')) return;
+
+    var settings = loadSettings();
+
+    var root = document.createElement('div');
+    root.id = 'sb-desktop-settings';
+    root.innerHTML =
+      '<div class="sb-desk-backdrop">' +
+        '<div class="sb-desk-panel">' +
+          '<h2>Starblast Desktop</h2>' +
+          '<p class="sb-desk-sub">Réglages visuels avant de jouer</p>' +
+          colorField('sb-gem-color', 'Couleur des gemmes', settings.gemColor) +
+          checkField('sb-gem-world-glow', 'Glow des gemmes (monde)', settings.gemWorldGlow !== false) +
+          checkField('sb-gem-bar-neon', 'Néon barre gemmes', settings.gemBarNeon !== false) +
+          colorField('sb-shield-color', 'Couleur barre bouclier', settings.shieldColor) +
+          checkField('sb-shield-neon', 'Néon barre bouclier', settings.shieldBarNeon !== false) +
+          colorField('sb-energy-color', 'Couleur barre énergie', settings.energyColor) +
+          checkField('sb-energy-neon', 'Néon barre énergie', settings.energyBarNeon !== false) +
+          checkField('sb-lb-neon', 'Galaxie + néon sur ton pseudo (TAB)', settings.leaderboardNeon !== false) +
+          colorField('sb-lb-color', 'Couleur néon pseudo (leaderboard)', settings.leaderboardColor) +
+          '<p class="sb-desk-hint">Molette souris en jeu : zoom FOV + / −</p>' +
+          '<div class="sb-desk-actions">' +
+            '<button type="button" id="sb-desk-apply">Appliquer et jouer</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+
+    var style = document.createElement('style');
+    style.textContent =
+      '#sb-desktop-settings{position:fixed;inset:0;z-index:2147483646;font-family:Segoe UI,system-ui,sans-serif}' +
+      '#sb-desktop-settings .sb-desk-backdrop{position:absolute;inset:0;background:rgba(0,0,0,.72);display:flex;align-items:center;justify-content:center}' +
+      '#sb-desktop-settings .sb-desk-panel{width:min(420px,92vw);max-height:90vh;overflow:auto;background:#0a0a0a;border:2px solid #00ffff;border-radius:12px;padding:24px;color:#fff;box-shadow:0 0 24px rgba(0,255,255,.35)}' +
+      '#sb-desktop-settings h2{margin:0 0 4px;font-size:22px;color:#00ffff;text-shadow:0 0 8px rgba(0,255,255,.8)}' +
+      '#sb-desktop-settings .sb-desk-sub{margin:0 0 18px;opacity:.75;font-size:13px}' +
+      '#sb-desktop-settings .sb-desk-field{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:10px 0;font-size:14px}' +
+      '#sb-desktop-settings .sb-desk-check{justify-content:flex-start;flex-wrap:wrap}' +
+      '#sb-desktop-settings input[type=color]{width:56px;height:36px;border:1px solid #444;background:#111;cursor:pointer}' +
+      '#sb-desktop-settings .sb-desk-hint{margin:8px 0 0;font-size:12px;opacity:.6}' +
+      '#sb-desktop-settings .sb-desk-actions{margin-top:20px;display:flex;justify-content:flex-end}' +
+      '#sb-desktop-settings #sb-desk-apply{background:linear-gradient(180deg,#00ffff,#00aacc);color:#000;border:none;border-radius:8px;padding:10px 18px;font-weight:700;cursor:pointer;box-shadow:0 0 12px rgba(0,255,255,.5)}' +
+      '#sb-desktop-settings #sb-desk-apply:hover{filter:brightness(1.1)}' +
+      '#sb-desktop-gear{position:fixed;bottom:16px;left:16px;z-index:2147483645;width:40px;height:40px;border-radius:50%;border:2px solid #00ffff;background:#111;color:#00ffff;font-size:18px;cursor:pointer;box-shadow:0 0 10px rgba(0,255,255,.4)}';
+
+    document.documentElement.appendChild(style);
+    document.documentElement.appendChild(root);
+
+    var gear = document.createElement('button');
+    gear.id = 'sb-desktop-gear';
+    gear.type = 'button';
+    gear.title = 'Réglages Starblast Desktop';
+    gear.textContent = '⚙';
+    gear.style.display = 'none';
+    document.documentElement.appendChild(gear);
+
+    function hidePanel() {
+      root.style.display = 'none';
+      gear.style.display = 'block';
+    }
+
+    function showPanel() {
+      root.style.display = 'block';
+      var s = loadSettings();
+      document.getElementById('sb-gem-color').value = s.gemColor;
+      document.getElementById('sb-gem-world-glow').checked = s.gemWorldGlow !== false;
+      document.getElementById('sb-gem-bar-neon').checked = s.gemBarNeon !== false;
+      document.getElementById('sb-shield-color').value = s.shieldColor;
+      document.getElementById('sb-shield-neon').checked = s.shieldBarNeon !== false;
+      document.getElementById('sb-energy-color').value = s.energyColor;
+      document.getElementById('sb-energy-neon').checked = s.energyBarNeon !== false;
+      document.getElementById('sb-lb-neon').checked = s.leaderboardNeon !== false;
+      document.getElementById('sb-lb-color').value = s.leaderboardColor;
+    }
+
+    document.getElementById('sb-desk-apply').addEventListener('click', function () {
+      var ok = saveSettings({
+        gemColor: document.getElementById('sb-gem-color').value,
+        gemWorldGlow: document.getElementById('sb-gem-world-glow').checked,
+        gemBarNeon: document.getElementById('sb-gem-bar-neon').checked,
+        shieldColor: document.getElementById('sb-shield-color').value,
+        shieldBarNeon: document.getElementById('sb-shield-neon').checked,
+        energyColor: document.getElementById('sb-energy-color').value,
+        energyBarNeon: document.getElementById('sb-energy-neon').checked,
+        leaderboardNeon: document.getElementById('sb-lb-neon').checked,
+        leaderboardColor: document.getElementById('sb-lb-color').value,
+        fovMultiplier: loadSettings().fovMultiplier || DEFAULTS.fovMultiplier
+      });
+      if (!ok) return;
+      localStorage.setItem('sbDesktopSettingsDismissed', '1');
+      hidePanel();
+    });
+
+    gear.addEventListener('click', showPanel);
+
+    if (localStorage.getItem('sbDesktopSettingsDismissed') === '1') {
+      hidePanel();
+    } else {
+      showPanel();
+    }
+  }
+
+  if (document.documentElement) createOverlay();
+  else document.addEventListener('DOMContentLoaded', createOverlay);
+})();
+
+/**
+ * Compact ship color picker — lobby preview + neutrals (noir / blanc / gris).
+ */
+(function () {
+  'use strict';
+
+  if (window.__sbDesktopShipColors) return;
+  window.__sbDesktopShipColors = true;
+
+  var NEUTRALS = [
+    { id: 'black', label: 'Noir', bg: '#141414', filter: 'grayscale(1) brightness(0.32) contrast(1.15)', hue: 0 },
+    { id: 'dgray', label: 'Gris fonce', bg: '#3a3a3a', filter: 'grayscale(1) brightness(0.5)', hue: 0 },
+    { id: 'gray', label: 'Gris', bg: '#7a7a7a', filter: 'grayscale(1) brightness(0.72)', hue: 0 },
+    { id: 'lgray', label: 'Gris clair', bg: '#b8b8b8', filter: 'grayscale(1) brightness(0.92)', hue: 0 },
+    { id: 'white', label: 'Blanc', bg: '#f2f2f2', filter: 'grayscale(1) brightness(1.35) contrast(0.88)', hue: 48 }
+  ];
+
+  var HUES = [];
+  for (var h = 0; h < 360; h += 12) HUES.push(h);
+
+  var NEUTRAL_BY_ID = {};
+  for (var n = 0; n < NEUTRALS.length; n++) NEUTRAL_BY_ID[NEUTRALS[n].id] = NEUTRALS[n];
+
+  var shipExporterCache = null;
+  var badgeRendererCache = null;
+
+  function walkObjects(root, visit, maxDepth) {
+    var stack = [{ obj: root, depth: 0 }];
+    var seen = typeof WeakSet === 'function' ? new WeakSet() : null;
+
+    while (stack.length) {
+      var item = stack.pop();
+      var obj = item.obj;
+      var depth = item.depth;
+      if (!obj || depth > maxDepth) continue;
+      if (seen) {
+        if (seen.has(obj)) continue;
+        seen.add(obj);
+      }
+
+      var hit = visit(obj, depth);
+      if (hit) return hit;
+
+      if (typeof obj !== 'object' && typeof obj !== 'function') continue;
+      var keys;
+      try { keys = Object.keys(obj); } catch (e) { continue; }
+      for (var i = 0; i < keys.length && i < 50; i++) {
+        try {
+          var child = obj[keys[i]];
+          if (child && (typeof child === 'object' || typeof child === 'function')) {
+            stack.push({ obj: child, depth: depth + 1 });
+          }
+        } catch (e) { /* ignore */ }
+      }
+    }
+    return null;
+  }
+
+  function findWelcomeHost() {
+    return walkObjects(window, function (obj) {
+      if (typeof obj.setColor === 'function' && obj.game_modes) return obj;
+      return null;
+    }, 7);
+  }
+
+  function findShipExporter() {
+    if (shipExporterCache && shipExporterCache.exportThumbnail) return shipExporterCache;
+
+    function matchExporter(obj) {
+      if (!obj) return null;
+      if (typeof obj.exportThumbnail === 'function' && typeof obj.getShipIcon === 'function') {
+        return obj;
+      }
+      return null;
+    }
+
+    var direct = matchExporter(typeof window !== 'undefined' ? window.lO1Ol : null);
+    if (direct) {
+      shipExporterCache = direct;
+      return direct;
+    }
+
+    var host = findWelcomeHost();
+    if (host && host.lI1IO) {
+      var fromClient = walkObjects(host.lI1IO, matchExporter, 8);
+      if (fromClient) {
+        shipExporterCache = fromClient;
+        return fromClient;
+      }
+    }
+
+    var fromWindow = walkObjects(window, matchExporter, 6);
+    if (fromWindow) {
+      shipExporterCache = fromWindow;
+      return fromWindow;
+    }
+    return null;
+  }
+
+  function findBadgeRenderer() {
+    if (badgeRendererCache) return badgeRendererCache;
+
+    var found = walkObjects(window, function (obj) {
+      if (typeof obj !== 'function' || !obj.prototype) return null;
+      if (typeof obj.prototype.toImage === 'function' && typeof obj.prototype.OO0IO === 'function') {
+        return obj;
+      }
+      return null;
+    }, 8);
+
+    if (found) badgeRendererCache = found;
+    return found;
+  }
+
+  function getCustomParts(host) {
+    var finish = 'zinc';
+    var laser = 0;
+    if (host && host.lI1IO && host.lI1IO.I0OlO && host.lI1IO.I0OlO.custom) {
+      finish = host.lI1IO.I0OlO.custom.finish;
+      laser = host.lI1IO.I0OlO.custom.laser;
+    }
+    return { finish: finish, laser: laser };
+  }
+
+  function swatchKey(hue, neutralId) {
+    return neutralId ? 'n:' + neutralId : 'h:' + hue;
+  }
+
+  function readSelection() {
+    var neutral = localStorage.getItem('sb_ship_neutral') || '';
+    var hue = parseInt(localStorage.getItem('shipColor') || '0', 10);
+    if (isNaN(hue)) hue = 0;
+    if (neutral && NEUTRAL_BY_ID[neutral]) {
+      return { hue: NEUTRAL_BY_ID[neutral].hue, neutral: neutral };
+    }
+    return { hue: hue, neutral: '' };
+  }
+
+  function findShipPreviewNode() {
+    return document.querySelector('.modal .shippreview') ||
+      document.querySelector('.modal td.shippreview') ||
+      document.querySelector('td.shippreview') ||
+      document.querySelector('.shippreview');
+  }
+
+  function syncCustomHue(hue, host) {
+    host = host || findWelcomeHost();
+    if (!host || !host.lI1IO || !host.lI1IO.I0OlO) return;
+    var parsed = parseInt(hue, 10);
+    if (isNaN(parsed)) parsed = 0;
+    if (host.lI1IO.I0OlO.custom) host.lI1IO.I0OlO.custom.hue = parsed;
+    if (host.lI1IO.I0OlO.hue !== undefined) host.lI1IO.I0OlO.hue = parsed;
+  }
+
+  function refreshWelcomeCanvasShip(hue, host) {
+    host = host || findWelcomeHost();
+    if (!host || !host.lI1IO || !host.lI1IO.display || !host.lI1IO.display.screen) return;
+    var screen = host.lI1IO.display.screen;
+    if (typeof screen.setHue === 'function') screen.setHue(parseInt(hue, 10) || 0);
+  }
+
+  function refreshShipPreview() {
+    var exporter = findShipExporter();
+    if (!exporter) return;
+
+    var host = findWelcomeHost();
+    var sel = readSelection();
+    var parts = getCustomParts(host);
+    var shipHue = parseInt(localStorage.getItem('shipColor') || String(sel.hue), 10);
+    if (isNaN(shipHue)) shipHue = sel.hue;
+
+    syncCustomHue(shipHue, host);
+    refreshWelcomeCanvasShip(shipHue, host);
+
+    var preview = findShipPreviewNode();
+    if (preview) {
+      preview.innerHTML = '';
+      var thumb = exporter.exportThumbnail(101, shipHue, parts.finish, parts.laser, 192);
+      if (thumb) preview.appendChild(thumb);
+
+      if (sel.neutral) {
+        var neu = NEUTRAL_BY_ID[sel.neutral];
+        if (neu) {
+          var nodes = preview.querySelectorAll('canvas, img');
+          for (var i = 0; i < nodes.length; i++) nodes[i].style.filter = neu.filter;
+        }
+      }
+    }
+
+    var logo = document.querySelector('.ecpverifiedlogo');
+    var Badge = findBadgeRenderer();
+    if (logo && Badge && host && host.lI1IO && host.lI1IO.I0OlO && host.lI1IO.I0OlO.custom) {
+      try {
+        logo.innerHTML = '';
+        var badge = new Badge(112, host.lI1IO.I0OlO.custom);
+        if (badge.canvas) logo.appendChild(badge.canvas);
+      } catch (e) { /* ignore */ }
+    }
+  }
+
+  function updateSwatchUI(sel) {
+    var key = swatchKey(sel.hue, sel.neutral);
+    var spans = document.querySelectorAll('#sb-ship-color-bar span[data-sb-color], #colors span[data-sb-color]');
+    for (var i = 0; i < spans.length; i++) {
+      var el = spans[i];
+      if (el.getAttribute('data-sb-color') === key) el.classList.add('selected');
+      else el.classList.remove('selected');
+    }
+  }
+
+  function updateAccentUI(hue, neutralId) {
+    var neu = neutralId ? NEUTRAL_BY_ID[neutralId] : null;
+    var chosen = document.querySelector('.colorchosen');
+    if (chosen) {
+      chosen.style.background = neu
+        ? neu.bg
+        : 'linear-gradient(135deg,hsl(' + hue + ',70%,60%) 0%,hsl(' + hue + ',70%,40%) 100%)';
+    }
+
+    var input = document.querySelector('#player input') ||
+      document.querySelector('.modal input[type="text"]');
+    if (input) {
+      if (neu) {
+        input.style.color = neu.id === 'black' ? 'rgba(220,220,220,.9)' : 'rgba(40,40,40,.95)';
+        input.style.textShadow = '0 0 6px rgba(255,255,255,.35)';
+      } else {
+        input.style.color = 'hsla(' + hue + ',100%,90%,.9)';
+        input.style.textShadow = '0 0 7px hsla(' + hue + ',80%,80%,1)';
+      }
+    }
+  }
+
+  function syncNativeColorSpan(hue) {
+    var host = findWelcomeHost();
+    localStorage.setItem('shipColor', String(hue));
+
+    if (host && typeof host.setColor === 'function') {
+      var native = document.querySelector('#colors span[data-hue="' + hue + '"]');
+      if (native) {
+        var spans = document.querySelectorAll('#colors span[data-hue]');
+        for (var i = 0; i < spans.length; i++) {
+          spans[i].classList.remove('selected');
+        }
+        native.classList.add('selected');
+      }
+      host.setColor(hue);
+    }
+  }
+
+  function hookSetColor(host) {
+    if (!host || host.__sbSetColorHooked || typeof host.setColor !== 'function') return;
+    host.__sbSetColorHooked = true;
+    var original = host.setColor.bind(host);
+    host.setColor = function (hue) {
+      var result = original(hue);
+      refreshShipPreview();
+      return result;
+    };
+  }
+
+  function applySelection(hue, neutralId) {
+    hue = parseInt(hue, 10);
+    if (isNaN(hue)) hue = 0;
+
+    if (neutralId && NEUTRAL_BY_ID[neutralId]) {
+      localStorage.setItem('sb_ship_neutral', neutralId);
+      localStorage.setItem('shipColor', String(NEUTRAL_BY_ID[neutralId].hue));
+    } else {
+      localStorage.removeItem('sb_ship_neutral');
+      localStorage.setItem('shipColor', String(hue));
+      syncNativeColorSpan(hue);
+    }
+
+    var sel = readSelection();
+    updateSwatchUI(sel);
+    updateAccentUI(sel.hue, sel.neutral);
+    refreshShipPreview();
+    window.dispatchEvent(new CustomEvent('sbDesktopShipHue', { detail: sel }));
+  }
+
+  function makeNeutralSwatch(neu) {
+    var span = document.createElement('span');
+    span.style.background = neu.bg;
+    span.setAttribute('data-sb-color', swatchKey(neu.hue, neu.id));
+    span.setAttribute('data-sb-neutral', neu.id);
+    span.title = neu.label;
+    span.className = 'sb-neutral-swatch';
+    span.addEventListener('click', function (id) {
+      return function () { applySelection(NEUTRAL_BY_ID[id].hue, id); };
+    }(neu.id));
+    return span;
+  }
+
+  function makeHueSwatch(hue) {
+    var span = document.createElement('span');
+    span.style.background = 'linear-gradient(135deg,hsl(' + hue + ',70%,60%) 0%,hsl(' + hue + ',70%,40%) 100%)';
+    span.setAttribute('data-sb-color', swatchKey(hue, ''));
+    span.setAttribute('data-hue', String(hue));
+    span.title = 'Teinte ' + hue;
+    span.addEventListener('click', function (h) {
+      return function () { applySelection(h, ''); };
+    }(hue));
+    return span;
+  }
+
+  function buildPalette(container) {
+    if (!container || container.__sbPaletteBuilt) return;
+    container.innerHTML = '';
+
+    var neutralsRow = document.createElement('div');
+    neutralsRow.className = 'sb-ship-color-row sb-ship-color-neutrals';
+    for (var i = 0; i < NEUTRALS.length; i++) neutralsRow.appendChild(makeNeutralSwatch(NEUTRALS[i]));
+    container.appendChild(neutralsRow);
+
+    var huesRow = document.createElement('div');
+    huesRow.className = 'sb-ship-color-row sb-ship-color-hues';
+    for (var j = 0; j < HUES.length; j++) huesRow.appendChild(makeHueSwatch(HUES[j]));
+    container.appendChild(huesRow);
+
+    container.__sbPaletteBuilt = true;
+  }
+
+  function findColorAnchor() {
+    return document.getElementById('colors') ||
+      document.querySelector('#player .playbtn') ||
+      document.getElementById('player') ||
+      document.querySelector('.colorwrapper') ||
+      document.querySelector('.modal .playbtn') ||
+      document.querySelector('.modal #player') ||
+      document.querySelector('.modal .shippreview') ||
+      document.querySelector('.modal .gmodes');
+  }
+
+  function ensureColorBar() {
+    var onLauncher = !!window.__SB_DESKTOP_LAUNCHER_PATCH;
+    var onWelcome = !!(document.getElementById('player') || document.querySelector('.modal .gmodes'));
+    if (!onLauncher && !onWelcome) return;
+
+    var bar = document.getElementById('sb-ship-color-bar');
+    if (!bar) {
+      var anchor = findColorAnchor();
+      if (!anchor) return;
+
+      bar = document.createElement('div');
+      bar.id = 'sb-ship-color-bar';
+      bar.setAttribute('data-sb-ship-colors', '3');
+
+      var label = document.createElement('div');
+      label.className = 'sb-ship-color-label';
+      label.textContent = 'Couleur vaisseau';
+      bar.appendChild(label);
+
+      var grid = document.createElement('div');
+      grid.className = 'sb-ship-color-grid';
+      bar.appendChild(grid);
+
+      if (anchor.id === 'colors') {
+        anchor.parentElement.insertBefore(bar, anchor.nextSibling);
+      } else if (anchor.parentElement) {
+        if (anchor.nextSibling) anchor.parentElement.insertBefore(bar, anchor.nextSibling);
+        else anchor.parentElement.appendChild(bar);
+      }
+      buildPalette(grid);
+    } else if (!bar.querySelector('.sb-ship-color-neutrals')) {
+      var existingGrid = bar.querySelector('.sb-ship-color-grid');
+      if (existingGrid) {
+        existingGrid.__sbPaletteBuilt = false;
+        buildPalette(existingGrid);
+      }
+    }
+
+    var colors = document.getElementById('colors');
+    if (colors) colors.style.display = 'none';
+
+    hookSetColor(findWelcomeHost());
+
+    var sel = readSelection();
+    updateSwatchUI(sel);
+    updateAccentUI(sel.hue, sel.neutral);
+    refreshShipPreview();
+  }
+
+  function injectStyles() {
+    if (document.getElementById('sb-ship-colors-style')) return;
+    var style = document.createElement('style');
+    style.id = 'sb-ship-colors-style';
+    style.textContent =
+      '#sb-ship-color-bar{margin:6px auto 2px auto;max-width:min(520px,94vw);position:relative;z-index:2}' +
+      '#sb-ship-color-bar .sb-ship-color-label{font-size:11px;opacity:.75;margin:0 0 4px 2px;text-align:center;letter-spacing:.03em}' +
+      '#sb-ship-color-bar .sb-ship-color-grid{display:flex;flex-direction:column;gap:4px;padding:5px 6px;background:rgba(0,0,0,.45);border:1px solid rgba(120,200,255,.2);border-radius:6px}' +
+      '#sb-ship-color-bar .sb-ship-color-row{display:flex;flex-wrap:nowrap;justify-content:center;gap:3px;overflow-x:auto;overflow-y:hidden;scrollbar-width:thin;max-width:100%}' +
+      '#sb-ship-color-bar .sb-ship-color-neutrals{padding-bottom:3px;border-bottom:1px solid rgba(255,255,255,.12)}' +
+      '#sb-ship-color-bar span{flex:0 0 auto;width:18px;height:18px;border:1px solid rgba(0,0,0,.5);cursor:pointer;opacity:.9;border-radius:3px;box-sizing:border-box}' +
+      '#sb-ship-color-bar span.sb-neutral-swatch{border-color:rgba(255,255,255,.35)}' +
+      '#sb-ship-color-bar span.selected,#colors span.selected{opacity:1;box-shadow:0 0 4px 1px #fff;transform:scale(1.15);z-index:1;position:relative}' +
+      '#player #sb-ship-color-bar{margin:8px auto 4px auto}' +
+      '.modal #colors{display:none!important}';
+    document.documentElement.appendChild(style);
+  }
+
+  function hookNeutralShipTint() {
+    if (window.__sbShipNeutralHook || typeof window.ll0O1 === 'undefined' || !window.ll0O1.hsvToRgbHex) return;
+    window.__sbShipNeutralHook = true;
+    var orig = window.ll0O1.hsvToRgbHex.bind(window.ll0O1);
+    window.ll0O1.hsvToRgbHex = function (h, s, l) {
+      var id = localStorage.getItem('sb_ship_neutral');
+      var neu = id && NEUTRAL_BY_ID[id];
+      if (neu) {
+        if (id === 'black') return orig(0, 0, 0.12);
+        if (id === 'dgray') return orig(0, 0, 0.28);
+        if (id === 'gray') return orig(0, 0, 0.48);
+        if (id === 'lgray') return orig(0, 0, 0.68);
+        if (id === 'white') return orig(0, 0, 0.92);
+      }
+      return orig(h, s, l);
+    };
+  }
+
+  function watch() {
+    injectStyles();
+    hookNeutralShipTint();
+    ensureColorBar();
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', watch);
+  } else {
+    watch();
+  }
+
+  var obs = new MutationObserver(function () {
+    watch();
+  });
+  obs.observe(document.documentElement, { childList: true, subtree: true });
+})();
+
 /**
  * Starblast.io visual overrides — performance-safe desktop mod pack.
  */
@@ -488,37 +1220,17 @@
     }
   }
 
-  function hudColorBuffer(target) {
-    if (!target) return null;
-    if (target.attributes && target.attributes.color && target.attributes.color.array) {
-      return target.attributes.color.array;
-    }
-    if (target.color) return target.color;
-    return null;
-  }
-
-  function hudAttrArray(target, name, fallbackKey) {
-    if (!target) return null;
-    if (target.attributes && target.attributes[name] && target.attributes[name].array) {
-      return target.attributes[name].array;
-    }
-    if (fallbackKey && target[fallbackKey]) return target[fallbackKey];
-    return null;
-  }
-
   function applyHudBarNeon(geom, figures, startIndex, enabled, fillHex) {
     if (!enabled) return;
 
-    var colors = hudColorBuffer(geom);
-    if (!colors) return;
-    var opac = hudAttrArray(geom, 'opac', 'opac');
-    var sizes = hudAttrArray(geom, 'Ol11I', 'Ol11I');
-    var verts = hudAttrArray(geom, 'position', 'vertices');
+    var colors = geom.attributes.color.array;
+    var opac = geom.attributes.opac && geom.attributes.opac.array;
+    var sizes = geom.attributes.Ol11I && geom.attributes.Ol11I.array;
     var glowRgb = neonRgbFromHex(fillHex);
     var hotRgb = [
-      Math.min(1, glowRgb[0] * 1.35 + 0.25),
-      Math.min(1, glowRgb[1] * 1.35 + 0.25),
-      Math.min(1, glowRgb[2] * 1.35 + 0.25)
+      Math.min(1, glowRgb[0] + 0.18),
+      Math.min(1, glowRgb[1] + 0.18),
+      Math.min(1, glowRgb[2] + 0.18)
     ];
     var end = startIndex + HUD_DISPLAY_SIZE;
 
@@ -529,34 +1241,23 @@
         colors[3 * i + 1] = hotRgb[1];
         colors[3 * i + 2] = hotRgb[2];
         if (opac) opac[i] = 1;
-        if (sizes) sizes[i] = 0.072;
-        if (verts) verts[3 * i + 2] = 0;
+        if (sizes) sizes[i] = 0.038;
       } else if (fig === 0) {
-        colors[3 * i] = Math.min(1, glowRgb[0] * 0.55 + 0.08);
-        colors[3 * i + 1] = Math.min(1, glowRgb[1] * 0.55 + 0.08);
-        colors[3 * i + 2] = Math.min(1, glowRgb[2] * 0.55 + 0.08);
-        if (opac) opac[i] = 0.95;
-        if (sizes) sizes[i] = 0.055;
-        if (verts) verts[3 * i + 2] = 0;
-      } else if (fig === 11 || fig === 12 || fig === 13) {
-        colors[3 * i] = hotRgb[0];
-        colors[3 * i + 1] = hotRgb[1];
-        colors[3 * i + 2] = hotRgb[2];
-        if (sizes) sizes[i] = Math.max(sizes[i] || 0.02, 0.04);
-        if (opac) opac[i] = 1;
+        colors[3 * i] = glowRgb[0] * 0.12;
+        colors[3 * i + 1] = glowRgb[1] * 0.12;
+        colors[3 * i + 2] = glowRgb[2] * 0.12;
+        if (opac) opac[i] = 0.85;
+      } else if (fig === 11) {
+        colors[3 * i] = 1;
+        colors[3 * i + 1] = 1;
+        colors[3 * i + 2] = 1;
+        if (sizes) sizes[i] = Math.max(sizes[i] || 0.02, 0.028);
       } else if (fig > 0 && fig !== 16) {
-        colors[3 * i] = Math.min(1, glowRgb[0] * 0.75 + 0.2);
-        colors[3 * i + 1] = Math.min(1, glowRgb[1] * 0.75 + 0.2);
-        colors[3 * i + 2] = Math.min(1, glowRgb[2] * 0.75 + 0.2);
-        if (sizes) sizes[i] = Math.max(sizes[i] || 0.015, 0.032);
-        if (opac) opac[i] = 1;
+        colors[3 * i] = Math.min(1, glowRgb[0] * 0.55 + 0.25);
+        colors[3 * i + 1] = Math.min(1, glowRgb[1] * 0.55 + 0.25);
+        colors[3 * i + 2] = Math.min(1, glowRgb[2] * 0.55 + 0.25);
       }
     }
-  }
-
-  function isScoreboardRowRect(ctx, rw, rh) {
-    if (!ctx || !ctx.canvas) return false;
-    return rw >= 60 && rh >= 6 && rh <= Math.max(40, ctx.canvas.height / 2.5);
   }
 
   function patchHudGeometry(geom) {
@@ -579,30 +1280,16 @@
   }
 
   function hookFiguresInstance(fig) {
-    if (!fig || fig.__sbBarHooked) return;
+    if (!fig || fig.__sbBarHooked || typeof fig.setBarColor !== 'function') return;
 
-    if (typeof fig.setBarColor === 'function') {
-      var originalSetBarColor = fig.setBarColor;
-      fig.setBarColor = function (start, r, g, b) {
-        var out = originalSetBarColor.apply(this, arguments);
-        if (start === this.crystal_index || start === this.generator_index || start === this.shield_index) {
-          patchFiguresInstance(this);
-        }
-        return out;
-      };
-    }
-
-    if (typeof fig.setBar === 'function') {
-      var originalSetBar = fig.setBar;
-      fig.setBar = function (start, value, max) {
-        var out = originalSetBar.apply(this, arguments);
-        if (start === this.crystal_index || start === this.generator_index || start === this.shield_index) {
-          patchFiguresInstance(this);
-        }
-        return out;
-      };
-    }
-
+    var originalSetBarColor = fig.setBarColor;
+    fig.setBarColor = function (start, r, g, b) {
+      var out = originalSetBarColor.apply(this, arguments);
+      if (start === this.crystal_index || start === this.generator_index || start === this.shield_index) {
+        patchFiguresInstance(this);
+      }
+      return out;
+    };
     fig.__sbBarHooked = true;
   }
 
@@ -616,22 +1303,12 @@
     paintHudBar(fig.color, fig.figure, fig.generator_index, COLORS.pink, COLORS.black);
     paintHudBar(fig.color, fig.figure, fig.shield_index, COLORS.cyan, COLORS.black);
 
-    applyHudBarNeon(fig, fig.figure, fig.crystal_index, s.gemBarNeon !== false, s.gemColor);
-    applyHudBarNeon(fig, fig.figure, fig.generator_index, s.energyBarNeon !== false, s.energyColor);
-    applyHudBarNeon(fig, fig.figure, fig.shield_index, s.shieldBarNeon !== false, s.shieldColor);
-
     if (fig.geometry && isHudGeometry(fig.geometry)) {
       applyHudBarNeon(fig.geometry, fig.figure, fig.crystal_index, s.gemBarNeon !== false, s.gemColor);
       applyHudBarNeon(fig.geometry, fig.figure, fig.generator_index, s.energyBarNeon !== false, s.energyColor);
       applyHudBarNeon(fig.geometry, fig.figure, fig.shield_index, s.shieldBarNeon !== false, s.shieldColor);
       var colAttr = fig.geometry.getAttribute && fig.geometry.getAttribute('color');
       if (colAttr) colAttr.needsUpdate = true;
-      var opAttr = fig.geometry.getAttribute && fig.geometry.getAttribute('opac');
-      if (opAttr) opAttr.needsUpdate = true;
-      var sizeAttr = fig.geometry.getAttribute && fig.geometry.getAttribute('Ol11I');
-      if (sizeAttr) sizeAttr.needsUpdate = true;
-      var posAttr = fig.geometry.getAttribute && fig.geometry.getAttribute('position');
-      if (posAttr) posAttr.needsUpdate = true;
     }
   }
 
@@ -866,14 +1543,13 @@
   }
 
   function getPlayerName() {
+    var inp = document.querySelector('#player input');
+    if (inp && inp.value && inp.value.trim()) return inp.value.trim();
+
     var client = findGameClient();
     if (client && client.player_name && String(client.player_name).trim()) {
       return String(client.player_name).trim();
     }
-
-    var inp = document.querySelector('#player input') ||
-      document.querySelector('.modal input[type="text"]');
-    if (inp && inp.value && inp.value.trim()) return inp.value.trim();
 
     if (window.__sbDesktopPlayerName) return String(window.__sbDesktopPlayerName).trim();
     return '';
@@ -910,7 +1586,6 @@
     var str = String(text).trim();
     if (!/^\d+\.\s+/.test(str)) return false;
     var rowName = str.replace(/^\d+\.\s+/, '').trim();
-    rowName = rowName.replace(/^\[[^\]]+\]\s*/, '').trim();
     return namesMatch(rowName, name);
   }
 
@@ -1117,19 +1792,19 @@
       };
 
       ctx.fillRect = function (rx, ry, rw, rh) {
-        if (getSettings().leaderboardNeon && isScoreboardRowRect(ctx, rw, rh)) {
+        if (getSettings().leaderboardNeon &&
+            rw >= ctx.canvas.width * 0.88 &&
+            rh >= 6 && rh <= ctx.canvas.height / 4) {
           ctx.__sbPlayerRowRect = { x: rx, y: ry, w: rw, h: rh };
         }
         return origFillRect.apply(ctx, arguments);
       };
 
       try {
-        ctx.__sbScoreboardDraw = true;
         return originalDraw.call(this, ctx);
       } finally {
         ctx.fillText = origFillText;
         ctx.fillRect = origFillRect;
-        ctx.__sbScoreboardDraw = false;
       }
     };
     panel.__sbLbInstHooked = true;
@@ -1175,19 +1850,19 @@
             };
 
             ctx.fillRect = function (rx, ry, rw, rh) {
-              if (getSettings().leaderboardNeon && isScoreboardRowRect(ctx, rw, rh)) {
+              if (getSettings().leaderboardNeon &&
+                  rw >= ctx.canvas.width * 0.88 &&
+                  rh >= 6 && rh <= ctx.canvas.height / 4) {
                 ctx.__sbPlayerRowRect = { x: rx, y: ry, w: rw, h: rh };
               }
               return origFillRect.apply(ctx, arguments);
             };
 
             try {
-              ctx.__sbScoreboardDraw = true;
               return originalDraw.call(this, ctx);
             } finally {
               ctx.fillText = origFillText;
               ctx.fillRect = origFillRect;
-              ctx.__sbScoreboardDraw = false;
             }
           };
           obj.prototype.__sbLbProtoHooked = true;
@@ -1239,60 +1914,9 @@
     }
   }
 
-  function hookFiguresPrototype() {
-    var stack = [window];
-    var seen = typeof WeakSet === 'function' ? new WeakSet() : null;
-
-    while (stack.length) {
-      var obj = stack.pop();
-      if (!obj || typeof obj !== 'object') continue;
-      if (seen) {
-        if (seen.has(obj)) continue;
-        seen.add(obj);
-      }
-
-      if (typeof obj === 'function' && obj.prototype &&
-          typeof obj.prototype.setBar === 'function' &&
-          typeof obj.prototype.setBarColor === 'function' &&
-          typeof obj.prototype.initBar === 'function' &&
-          !obj.prototype.__sbFiguresProtoHooked) {
-        var proto = obj.prototype;
-        var origSetBar = proto.setBar;
-        proto.setBar = function (start, value, max) {
-          var out = origSetBar.apply(this, arguments);
-          if (start === this.crystal_index || start === this.generator_index || start === this.shield_index) {
-            patchFiguresInstance(this);
-          }
-          return out;
-        };
-        var origSetBarColor = proto.setBarColor;
-        proto.setBarColor = function (start, r, g, b) {
-          var out = origSetBarColor.apply(this, arguments);
-          if (start === this.crystal_index || start === this.generator_index || start === this.shield_index) {
-            patchFiguresInstance(this);
-          }
-          return out;
-        };
-        proto.__sbFiguresProtoHooked = true;
-      }
-
-      if (typeof obj === 'function' && obj.prototype) stack.push(obj.prototype);
-      var keys;
-      try { keys = Object.keys(obj); } catch (e) { continue; }
-      for (var i = 0; i < keys.length && i < 35; i++) {
-        try {
-          var child = obj[keys[i]];
-          if (child && typeof child === 'object') stack.push(child);
-          if (typeof child === 'function') stack.push(child);
-        } catch (e) { /* ignore */ }
-      }
-    }
-  }
-
   function hookScorePanelDraw() {
     hookScoreboardFromClient();
     hookScorePanelPrototype();
-    hookFiguresPrototype();
     var stack = [window];
     var seen = typeof WeakSet === 'function' ? new WeakSet() : null;
 
@@ -1338,19 +1962,19 @@
           };
 
           ctx.fillRect = function (rx, ry, rw, rh) {
-            if (getSettings().leaderboardNeon && isScoreboardRowRect(ctx, rw, rh)) {
+            if (getSettings().leaderboardNeon &&
+                rw >= ctx.canvas.width * 0.88 &&
+                rh >= 6 && rh <= ctx.canvas.height / 4) {
               ctx.__sbPlayerRowRect = { x: rx, y: ry, w: rw, h: rh };
             }
             return origFillRect.apply(ctx, arguments);
           };
 
           try {
-            ctx.__sbScoreboardDraw = true;
             return originalDraw.call(this, ctx);
           } finally {
             ctx.fillText = origFillText;
             ctx.fillRect = origFillRect;
-            ctx.__sbScoreboardDraw = false;
           }
         };
         proto.__sbLbHooked = true;
@@ -1386,13 +2010,6 @@
         );
       }
       return origFillText.apply(this, arguments);
-    };
-
-    CanvasRenderingContext2D.prototype.fillRect = function (rx, ry, rw, rh) {
-      if (getSettings().leaderboardNeon && this.__sbScoreboardDraw && isScoreboardRowRect(this, rw, rh)) {
-        this.__sbPlayerRowRect = { x: rx, y: ry, w: rw, h: rh };
-      }
-      return origFillRect.apply(this, arguments);
     };
   }
 
