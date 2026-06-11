@@ -41,8 +41,8 @@ if (launcherBundle.indexOf('window.__SB_DESKTOP_MODS_VERSION = ' + JSON.stringif
 if (launcherBundle.indexOf('hookSettingsPersistence') < 0) {
   throw new Error('Launcher bundle missing settings persistence hooks');
 }
-if (launcherBundle.indexOf('sb-ship-color-bar') < 0) {
-  throw new Error('Launcher bundle missing ship color palette');
+if (launcherBundle.indexOf('sb-ship-color-neutrals') < 0) {
+  throw new Error('Launcher bundle missing neutral ship colors');
 }
 const launcherSha256 = crypto.createHash('sha256').update(launcherBundle).digest('hex');
 fs.writeFileSync(path.join(releaseDir, 'sb-desktop-mods.launcher.bundle.js'), launcherBundle);
