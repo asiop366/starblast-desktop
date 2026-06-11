@@ -94,6 +94,7 @@
         var gem = '#ffffff';
         try {
           if (exp.check('gemcolor1')) gem = String(exp.check('gemcolor1'));
+          else if (exp.check('gemindeed')) gem = String(exp.check('gemindeed'));
           else if (window.ClientStorage && window.ClientStorage.getGemColor1) gem = String(window.ClientStorage.getGemColor1());
         } catch (e) {
           // ignore
