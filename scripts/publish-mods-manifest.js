@@ -41,8 +41,9 @@ if (launcherBundle.indexOf('window.__SB_DESKTOP_MODS_VERSION = ' + JSON.stringif
 if (launcherBundle.indexOf('hookSettingsPersistence') < 0) {
   throw new Error('Launcher bundle missing settings persistence hooks');
 }
-if (launcherBundle.indexOf('sb-color-row') < 0) {
-  throw new Error('Launcher bundle missing settings color UI fix');
+if (launcherBundle.indexOf('data-sb-ship-colors", "3"') < 0 &&
+    launcherBundle.indexOf("data-sb-ship-colors', '3'") < 0) {
+  throw new Error('Launcher bundle missing welcome screen color bar fix');
 }
 const launcherSha256 = crypto.createHash('sha256').update(launcherBundle).digest('hex');
 fs.writeFileSync(path.join(releaseDir, 'sb-desktop-mods.launcher.bundle.js'), launcherBundle);

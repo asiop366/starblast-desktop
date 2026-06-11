@@ -733,7 +733,7 @@
   }
 
 
-  function findGameClient() {
+  function findWelcomeHost() {
     var stack = [window];
     var seen = typeof WeakSet === 'function' ? new WeakSet() : null;
     while (stack.length) {
@@ -743,7 +743,35 @@
         if (seen.has(obj)) continue;
         seen.add(obj);
       }
-      if (obj.lI1IO && obj.lI1IO.player_name) return obj.lI1IO;
+      if (typeof obj.setColor === 'function' && obj.game_modes) return obj;
+      var keys;
+      try { keys = Object.keys(obj); } catch (e) { continue; }
+      for (var i = 0; i < keys.length && i < 35; i++) {
+        try {
+          var child = obj[keys[i]];
+          if (child && typeof child === 'object') stack.push(child);
+        } catch (e) { /* ignore */ }
+      }
+    }
+    return null;
+  }
+
+  function findGameClient() {
+    var host = findWelcomeHost();
+    if (host && host.lI1IO) return host.lI1IO;
+
+    var stack = [window];
+    var seen = typeof WeakSet === 'function' ? new WeakSet() : null;
+    while (stack.length) {
+      var obj = stack.pop();
+      if (!obj || typeof obj !== 'object') continue;
+      if (seen) {
+        if (seen.has(obj)) continue;
+        seen.add(obj);
+      }
+      if (obj.player_name !== undefined && obj.names && obj.Ol10l) return obj;
+      if (obj.lI1IO && obj.lI1IO.Ol10l) return obj.lI1IO;
+      if (obj.lI1IO && obj.lI1IO.player_name !== undefined && obj.lI1IO.names) return obj.lI1IO;
       var keys;
       try { keys = Object.keys(obj); } catch (e) { continue; }
       for (var i = 0; i < keys.length && i < 30; i++) {
@@ -757,15 +785,15 @@
   }
 
   function getPlayerName() {
-    var client = findGameClient();
-    if (client && client.player_name) return String(client.player_name).trim();
-    if (window.__sbDesktopPlayerName) return String(window.__sbDesktopPlayerName).trim();
     var inp = document.querySelector('#player input');
-    if (inp && inp.value) return inp.value.trim();
-    try {
-      var stored = localStorage.getItem('lIlO1');
-      if (stored) return String(stored).trim();
-    } catch (e) { /* ignore */ }
+    if (inp && inp.value && inp.value.trim()) return inp.value.trim();
+
+    var client = findGameClient();
+    if (client && client.player_name && String(client.player_name).trim()) {
+      return String(client.player_name).trim();
+    }
+
+    if (window.__sbDesktopPlayerName) return String(window.__sbDesktopPlayerName).trim();
     return '';
   }
 
@@ -959,7 +987,6 @@
   }
 
   function hookScorePanelPrototype() {
-    if (window.__sbScoreProtoHooked) return;
     var stack = [window];
     var seen = typeof WeakSet === 'function' ? new WeakSet() : null;
 
@@ -976,7 +1003,7 @@
           typeof obj.prototype.updateScore === 'function' &&
           !obj.prototype.__sbLbProtoHooked) {
         var src = obj.prototype.ll1OO.toString();
-        if (src.indexOf('getUint8(1)') >= 0 && src.indexOf('player_name') >= 0) {
+        if (src.indexOf('getUint8(1)') >= 0 && (src.indexOf('player_name') >= 0 || src.indexOf('names.get') >= 0)) {
           var originalDraw = obj.prototype.ll1OO;
           obj.prototype.ll1OO = function (ctx) {
             if (!getSettings().leaderboardNeon || !ctx || !ctx.fillText) {
@@ -1006,7 +1033,6 @@
           obj.prototype.__sbLbProtoHooked = true;
           window.__sbScoreProtoHooked = true;
           scorePanelHooked = true;
-          return;
         }
       }
 
@@ -1023,7 +1049,38 @@
     }
   }
 
+  function hookScoreboardFromClient() {
+    var client = findGameClient();
+    if (!client || !client.display || !client.display.screen) return;
+
+    var stack = [client.display.screen];
+    var seen = typeof WeakSet === 'function' ? new WeakSet() : null;
+
+    while (stack.length) {
+      var obj = stack.pop();
+      if (!obj || typeof obj !== 'object') continue;
+      if (seen) {
+        if (seen.has(obj)) continue;
+        seen.add(obj);
+      }
+
+      if (typeof obj.ll1OO === 'function' && obj.view && obj.lI1IO) {
+        wrapScorePanelDraw(obj);
+      }
+
+      var keys;
+      try { keys = Object.keys(obj); } catch (e) { continue; }
+      for (var i = 0; i < keys.length && i < 40; i++) {
+        try {
+          var child = obj[keys[i]];
+          if (child && typeof child === 'object') stack.push(child);
+        } catch (e) { /* ignore */ }
+      }
+    }
+  }
+
   function hookScorePanelDraw() {
+    hookScoreboardFromClient();
     hookScorePanelPrototype();
     var stack = [window];
     var seen = typeof WeakSet === 'function' ? new WeakSet() : null;
@@ -1101,7 +1158,7 @@
     var origStrokeText = CanvasRenderingContext2D.prototype.strokeText;
 
     CanvasRenderingContext2D.prototype.fillText = function (text, x, y, maxWidth) {
-      if (getSettings().leaderboardNeon && isScoreboardCanvas(this) && isPlayerScoreText(text)) {
+      if (getSettings().leaderboardNeon && isPlayerScoreText(text)) {
         syncPlayerName();
         return drawLeaderboardNeonName(
           this, text, x, y, maxWidth, origFillText, origFillRect, origStrokeText

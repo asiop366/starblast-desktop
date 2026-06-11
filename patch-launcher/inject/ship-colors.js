@@ -71,7 +71,9 @@
 
   function refreshShipPreview() {
     var preview = document.querySelector('.modal .shippreview') ||
-      document.querySelector('.modal td.shippreview');
+      document.querySelector('.modal td.shippreview') ||
+      document.querySelector('td.shippreview') ||
+      document.querySelector('.shippreview');
     if (!preview || typeof window.lO1Ol === 'undefined' || !window.lO1Ol.exportThumbnail) return;
 
     var sel = readSelection();
@@ -200,24 +202,30 @@
     container.__sbPaletteBuilt = true;
   }
 
-  function ensureModalColorBar() {
-    if (!window.__SB_DESKTOP_LAUNCHER_PATCH && !document.querySelector('.modal .gmodes')) return;
+  function findColorAnchor() {
+    return document.getElementById('colors') ||
+      document.querySelector('#player .playbtn') ||
+      document.getElementById('player') ||
+      document.querySelector('.colorwrapper') ||
+      document.querySelector('.modal .playbtn') ||
+      document.querySelector('.modal #player') ||
+      document.querySelector('.modal .shippreview') ||
+      document.querySelector('.modal .gmodes');
+  }
 
-    var colors = document.getElementById('colors');
-    if (colors) colors.style.display = 'none';
+  function ensureColorBar() {
+    var onLauncher = !!window.__SB_DESKTOP_LAUNCHER_PATCH;
+    var onWelcome = !!(document.getElementById('player') || document.querySelector('.modal .gmodes'));
+    if (!onLauncher && !onWelcome) return;
 
     var bar = document.getElementById('sb-ship-color-bar');
     if (!bar) {
-      var anchor = document.querySelector('.modal .playbtn') ||
-        document.querySelector('.modal #player') ||
-        document.querySelector('.modal .shippreview') ||
-        document.querySelector('.modal .gmodes');
-
+      var anchor = findColorAnchor();
       if (!anchor) return;
 
       bar = document.createElement('div');
       bar.id = 'sb-ship-color-bar';
-      bar.setAttribute('data-sb-ship-colors', '2');
+      bar.setAttribute('data-sb-ship-colors', '3');
 
       var label = document.createElement('div');
       label.className = 'sb-ship-color-label';
@@ -228,10 +236,11 @@
       grid.className = 'sb-ship-color-grid';
       bar.appendChild(grid);
 
-      var parent = anchor.parentElement;
-      if (parent) {
-        if (anchor.nextSibling) parent.insertBefore(bar, anchor.nextSibling);
-        else parent.appendChild(bar);
+      if (anchor.id === 'colors') {
+        anchor.parentElement.insertBefore(bar, anchor.nextSibling);
+      } else if (anchor.parentElement) {
+        if (anchor.nextSibling) anchor.parentElement.insertBefore(bar, anchor.nextSibling);
+        else anchor.parentElement.appendChild(bar);
       }
       buildPalette(grid);
     } else if (!bar.querySelector('.sb-ship-color-neutrals')) {
@@ -241,6 +250,9 @@
         buildPalette(existingGrid);
       }
     }
+
+    var colors = document.getElementById('colors');
+    if (colors) colors.style.display = 'none';
 
     var sel = readSelection();
     updateSwatchUI(sel);
@@ -261,6 +273,7 @@
       '#sb-ship-color-bar span{flex:0 0 auto;width:18px;height:18px;border:1px solid rgba(0,0,0,.5);cursor:pointer;opacity:.9;border-radius:3px;box-sizing:border-box}' +
       '#sb-ship-color-bar span.sb-neutral-swatch{border-color:rgba(255,255,255,.35)}' +
       '#sb-ship-color-bar span.selected,#colors span.selected{opacity:1;box-shadow:0 0 4px 1px #fff;transform:scale(1.15);z-index:1;position:relative}' +
+      '#player #sb-ship-color-bar{margin:8px auto 4px auto}' +
       '.modal #colors{display:none!important}';
     document.documentElement.appendChild(style);
   }
@@ -286,7 +299,7 @@
   function watch() {
     injectStyles();
     hookNeutralShipTint();
-    ensureModalColorBar();
+    ensureColorBar();
   }
 
   if (document.readyState === 'loading') {
