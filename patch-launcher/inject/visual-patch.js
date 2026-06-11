@@ -25,7 +25,7 @@
     energyColor: '#ff69b4',
     energyBarNeon: true,
     leaderboardNeon: true,
-    leaderboardColor: '#ff69b4',
+    leaderboardColor: '#ff33cc',
     fovMultiplier: 1.2
   };
 
@@ -831,8 +831,9 @@
     return namesMatch(rowName, name);
   }
 
-  function galaxySeed(w, h) {
-    var key = w + 'x' + h;
+  function galaxySeed(w, h, accentHex) {
+    var accent = hexToCss(accentHex || DEFAULTS.leaderboardColor);
+    var key = w + 'x' + h + ':' + accent;
     if (galaxyPatternCache[key]) return galaxyPatternCache[key];
 
     var canvas = document.createElement('canvas');
@@ -840,33 +841,41 @@
     canvas.height = h;
     var g = canvas.getContext('2d');
 
-    g.fillStyle = '#080012';
+    g.fillStyle = '#12001c';
     g.fillRect(0, 0, w, h);
 
     var blobs = [
-      { x: 0.18 * w, y: 0.52 * h, r: 0.42 * w, inner: 'rgba(220,30,160,0.7)', outer: 'rgba(40,0,60,0)' },
-      { x: 0.52 * w, y: 0.48 * h, r: 0.48 * w, inner: 'rgba(120,20,200,0.65)', outer: 'rgba(20,0,40,0)' },
-      { x: 0.82 * w, y: 0.5 * h, r: 0.36 * w, inner: 'rgba(255,60,180,0.45)', outer: 'rgba(30,0,50,0)' },
-      { x: 0.35 * w, y: 0.62 * h, r: 0.28 * w, inner: 'rgba(90,0,140,0.5)', outer: 'rgba(0,0,0,0)' }
+      { x: 0.12 * w, y: 0.48 * h, r: 0.58 * w, inner: 'rgba(255,30,190,0.92)', mid: 'rgba(140,0,120,0.45)', outer: 'rgba(30,0,45,0)' },
+      { x: 0.42 * w, y: 0.42 * h, r: 0.52 * w, inner: 'rgba(210,0,255,0.78)', mid: 'rgba(90,0,160,0.38)', outer: 'rgba(20,0,35,0)' },
+      { x: 0.72 * w, y: 0.52 * h, r: 0.48 * w, inner: 'rgba(255,60,170,0.72)', mid: 'rgba(120,0,100,0.35)', outer: 'rgba(25,0,40,0)' },
+      { x: 0.28 * w, y: 0.62 * h, r: 0.38 * w, inner: 'rgba(160,0,220,0.55)', mid: 'rgba(60,0,90,0.28)', outer: 'rgba(0,0,0,0)' },
+      { x: 0.58 * w, y: 0.58 * h, r: 0.32 * w, inner: 'rgba(255,100,220,0.45)', mid: 'rgba(80,0,120,0.22)', outer: 'rgba(0,0,0,0)' }
     ];
 
     for (var b = 0; b < blobs.length; b++) {
       var blob = blobs[b];
       var grad = g.createRadialGradient(blob.x, blob.y, 0, blob.x, blob.y, blob.r);
       grad.addColorStop(0, blob.inner);
-      grad.addColorStop(0.55, 'rgba(80,0,120,0.25)');
+      grad.addColorStop(0.45, blob.mid || 'rgba(80,0,120,0.25)');
       grad.addColorStop(1, blob.outer);
       g.fillStyle = grad;
       g.fillRect(0, 0, w, h);
     }
 
-    var starCount = Math.max(40, Math.floor(w * h / 900));
+    var wash = g.createLinearGradient(0, 0, w, 0);
+    wash.addColorStop(0, rgbaFromHex(accent, 0.18));
+    wash.addColorStop(0.5, rgbaFromHex(accent, 0.08));
+    wash.addColorStop(1, rgbaFromHex(accent, 0.18));
+    g.fillStyle = wash;
+    g.fillRect(0, 0, w, h);
+
+    var starCount = Math.max(55, Math.floor(w * h / 650));
     for (var i = 0; i < starCount; i++) {
       var sx = ((i * 97 + 13) % 1000) / 1000 * w;
       var sy = ((i * 53 + 7) % 1000) / 1000 * h;
-      var alpha = 0.25 + ((i * 31) % 70) / 100;
-      var radius = 0.4 + ((i * 17) % 15) / 10;
-      g.fillStyle = 'rgba(255,255,255,' + alpha + ')';
+      var alpha = 0.35 + ((i * 31) % 65) / 100;
+      var radius = 0.35 + ((i * 17) % 18) / 10;
+      g.fillStyle = 'rgba(255,220,255,' + alpha + ')';
       g.beginPath();
       g.arc(sx, sy, radius, 0, Math.PI * 2);
       g.fill();
@@ -879,19 +888,31 @@
   function drawGalaxyRow(ctx, barTop, barH, origFillRect, accentHex) {
     var w = ctx.canvas.width;
     var h = Math.max(24, Math.ceil(barH));
-    var pattern = galaxySeed(w, h);
     var accent = hexToCss(accentHex || DEFAULTS.leaderboardColor);
+    var pattern = galaxySeed(w, h, accent);
+    var rowY = barTop + 2;
+    var rowH = barH - 4;
 
     ctx.save();
     ctx.globalAlpha = 1;
-    ctx.drawImage(pattern, 0, 0, w, h, 0, barTop + 2, w, barH - 4);
+    ctx.shadowColor = accent;
+    ctx.shadowBlur = 14;
+    ctx.drawImage(pattern, 0, 0, w, h, 0, rowY, w, rowH);
+    ctx.shadowBlur = 0;
 
-    var edge = ctx.createLinearGradient(0, barTop, w, barTop);
-    edge.addColorStop(0, rgbaFromHex(accent, 0.35));
-    edge.addColorStop(0.5, rgbaFromHex(accent, 0.2));
-    edge.addColorStop(1, rgbaFromHex(accent, 0.35));
+    var edge = ctx.createLinearGradient(0, rowY, w, rowY);
+    edge.addColorStop(0, rgbaFromHex(accent, 0.55));
+    edge.addColorStop(0.15, rgbaFromHex(accent, 0.12));
+    edge.addColorStop(0.85, rgbaFromHex(accent, 0.12));
+    edge.addColorStop(1, rgbaFromHex(accent, 0.55));
     ctx.fillStyle = edge;
-    origFillRect.call(ctx, 0, barTop + 2, w, barH - 4);
+    origFillRect.call(ctx, 0, rowY, w, rowH);
+
+    ctx.strokeStyle = rgbaFromHex(accent, 0.45);
+    ctx.lineWidth = 1;
+    ctx.shadowColor = accent;
+    ctx.shadowBlur = 6;
+    ctx.strokeRect(0.5, rowY + 0.5, w - 1, rowH - 1);
     ctx.restore();
   }
 
@@ -901,11 +922,19 @@
     var rowH = canvasH / 11;
     var h = Math.max(16, rowH * 0.85);
     var neon = hexToCss(s.leaderboardColor || DEFAULTS.leaderboardColor);
-    var neonHot = lightenHex(neon, 20);
-    var neonSoft = lightenHex(neon, 80);
-    var darkFill = '#0c0018';
-    var barTop = y - rowH * 0.48;
-    var barH = rowH * 0.96;
+    var neonCore = lightenHex(neon, 45);
+    var neonHot = lightenHex(neon, 25);
+    var neonBloom = lightenHex(neon, 70);
+    var darkFill = '#0a0012';
+    var barTop;
+    var barH;
+    if (ctx.__sbPlayerRowRect) {
+      barTop = ctx.__sbPlayerRowRect.y;
+      barH = ctx.__sbPlayerRowRect.h;
+    } else {
+      barTop = y - rowH * 0.48;
+      barH = rowH * 0.96;
+    }
 
     var prev = {
       fill: ctx.fillStyle,
@@ -914,32 +943,49 @@
       shadowBlur: ctx.shadowBlur,
       shadowColor: ctx.shadowColor,
       globalAlpha: ctx.globalAlpha,
-      textAlign: ctx.textAlign
+      textAlign: ctx.textAlign,
+      textBaseline: ctx.textBaseline
     };
 
     drawGalaxyRow(ctx, barTop, barH, origFillRect, neon);
 
     ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
     ctx.miterLimit = 2;
     ctx.textAlign = prev.textAlign || 'left';
+    ctx.textBaseline = prev.textBaseline || 'middle';
 
-    ctx.lineWidth = Math.max(6, h * 0.2);
-    ctx.strokeStyle = neonHot;
+    // Couche 1 — halo externe diffus (néon LED)
+    ctx.lineWidth = Math.max(8, h * 0.34);
+    ctx.strokeStyle = rgbaFromHex(neon, 0.28);
     ctx.shadowColor = neon;
-    ctx.shadowBlur = 38;
+    ctx.shadowBlur = 52;
     origStrokeText.call(ctx, text, x, y, maxWidth);
 
-    ctx.lineWidth = Math.max(3.5, h * 0.12);
-    ctx.strokeStyle = neonSoft;
-    ctx.shadowBlur = 22;
+    // Couche 2 — glow magenta moyen
+    ctx.lineWidth = Math.max(5.5, h * 0.22);
+    ctx.strokeStyle = rgbaFromHex(neonHot, 0.72);
+    ctx.shadowColor = neonHot;
+    ctx.shadowBlur = 34;
     origStrokeText.call(ctx, text, x, y, maxWidth);
 
-    ctx.lineWidth = Math.max(1.8, h * 0.06);
-    ctx.strokeStyle = neon;
-    ctx.shadowBlur = 14;
+    // Couche 3 — contour LED vif
+    ctx.lineWidth = Math.max(3, h * 0.13);
+    ctx.strokeStyle = neonCore;
+    ctx.shadowColor = neonBloom;
+    ctx.shadowBlur = 18;
     origStrokeText.call(ctx, text, x, y, maxWidth);
 
+    // Couche 4 — trait intérieur lumineux
+    ctx.lineWidth = Math.max(1.2, h * 0.05);
+    ctx.strokeStyle = neonBloom;
+    ctx.shadowBlur = 8;
+    ctx.shadowColor = '#ffffff';
+    origStrokeText.call(ctx, text, x, y, maxWidth);
+
+    // Remplissage sombre à l'intérieur des lettres (style référence)
     ctx.shadowBlur = 0;
+    ctx.shadowColor = 'transparent';
     ctx.fillStyle = darkFill;
     var result = origFillText.call(ctx, text, x, y, maxWidth);
 
@@ -950,6 +996,7 @@
     ctx.shadowColor = prev.shadowColor;
     ctx.globalAlpha = prev.globalAlpha;
     ctx.textAlign = prev.textAlign;
+    ctx.textBaseline = prev.textBaseline;
     return result;
   }
 
@@ -976,10 +1023,20 @@
         return origFillText.apply(ctx, arguments);
       };
 
+      ctx.fillRect = function (rx, ry, rw, rh) {
+        if (getSettings().leaderboardNeon &&
+            rw >= ctx.canvas.width * 0.88 &&
+            rh >= 6 && rh <= ctx.canvas.height / 4) {
+          ctx.__sbPlayerRowRect = { x: rx, y: ry, w: rw, h: rh };
+        }
+        return origFillRect.apply(ctx, arguments);
+      };
+
       try {
         return originalDraw.call(this, ctx);
       } finally {
         ctx.fillText = origFillText;
+        ctx.fillRect = origFillRect;
       }
     };
     panel.__sbLbInstHooked = true;
@@ -1024,10 +1081,20 @@
               return origFillText.apply(ctx, arguments);
             };
 
+            ctx.fillRect = function (rx, ry, rw, rh) {
+              if (getSettings().leaderboardNeon &&
+                  rw >= ctx.canvas.width * 0.88 &&
+                  rh >= 6 && rh <= ctx.canvas.height / 4) {
+                ctx.__sbPlayerRowRect = { x: rx, y: ry, w: rw, h: rh };
+              }
+              return origFillRect.apply(ctx, arguments);
+            };
+
             try {
               return originalDraw.call(this, ctx);
             } finally {
               ctx.fillText = origFillText;
+              ctx.fillRect = origFillRect;
             }
           };
           obj.prototype.__sbLbProtoHooked = true;
@@ -1126,10 +1193,20 @@
             return origFillText.apply(ctx, arguments);
           };
 
+          ctx.fillRect = function (rx, ry, rw, rh) {
+            if (getSettings().leaderboardNeon &&
+                rw >= ctx.canvas.width * 0.88 &&
+                rh >= 6 && rh <= ctx.canvas.height / 4) {
+              ctx.__sbPlayerRowRect = { x: rx, y: ry, w: rw, h: rh };
+            }
+            return origFillRect.apply(ctx, arguments);
+          };
+
           try {
             return originalDraw.call(this, ctx);
           } finally {
             ctx.fillText = origFillText;
+            ctx.fillRect = origFillRect;
           }
         };
         proto.__sbLbHooked = true;

@@ -17,7 +17,7 @@
     energyColor: '#ff69b4',
     energyBarNeon: true,
     leaderboardNeon: true,
-    leaderboardColor: '#ff69b4',
+    leaderboardColor: '#ff33cc',
     fovMultiplier: 1.2
   };
 
