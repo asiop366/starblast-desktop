@@ -6,55 +6,103 @@ CE QU'IL DOIT DEJA AVOIR
   • Node.js LTS : https://nodejs.org/  (une fois, gratuit)
 
 CE QUE TU LUI ENVOIES
-  Le dossier "patch-launcher" (zip) contenant :
-    - PATCH-LAUNCHER.bat      <- premiere installation (double-clic)
-    - UPDATE-LAUNCHER.bat     <- mises a jour auto (double-clic)
-    - update-config.json      <- URL de tes mods (tu le prepares)
-    - scripts/
-    - inject/
+  Le zip patch-launcher (v1.1.12 ou plus recent) avec :
+    - PATCH-LAUNCHER.bat      <- premiere installation
+    - UPDATE-LAUNCHER.bat     <- mises a jour mods
+    - VERIFY-MODS.bat         <- verifier bundle + patch Launcher
+    - scripts/  inject/
 
-MISE A JOUR AUTO (comme un vrai client)
-  Toi :
-    1. Tu modifies inject/ sur ton PC
-    2. npm run publish:mods  (genere mods-manifest.json + releases/)
-    3. Tu push sur GitHub (ou heberge les fichiers en HTTPS)
-    4. Tu lui renvoies update-config.json si l URL change
+================================================
+ PREMIERE FOIS (dans l ordre)
+================================================
+  1. Installer Starblast Launcher + Node.js LTS
+  2. Extraire le zip (ex. Bureau\patch-launcher\)
+  3. FERMER completement Starblast Launcher (barre des taches aussi)
+  4. Double-clic PATCH-LAUNCHER.bat  -> attendre "OK"
+  5. Double-clic VERIFY-MODS.bat     -> "app.asar patche : OUI"
+  6. Relancer Starblast Launcher
 
-  Lui :
-    1. Double-clic UPDATE-LAUNCHER.bat
-    2. Relance Starblast Launcher
-    -> Il a tes dernieres modifs sans retaper le zip complet
+================================================
+ OU SONT LES OPTIONS ? (souvent mal compris)
+================================================
 
-  update-config.json exemple :
-    { "manifestUrl": "https://raw.githubusercontent.com/TOI/repo/main/mods-manifest.json" }
+  Les nouvelles options ne sont PAS sur starblast.io dans Chrome.
+  Il faut jouer VIA Starblast Launcher (Browser / Steam / ECP).
 
-ETAPES PREMIERE FOIS
-  1. Installer Starblast Launcher (s'il ne l'a pas deja)
-  2. Installer Node.js LTS si pas fait
-  3. Extraire le zip patch-launcher n'importe ou (Bureau, etc.)
-  4. Double-clic sur PATCH-LAUNCHER.bat
-  5. Relancer Starblast Launcher
-  6. Jouer en Browser / Steam / ECP comme d'habitude
+  1. Ouvre Starblast Launcher
+  2. Ecran d accueil (welcome) -> bouton Parametres / Settings
+     (icone engrenage ou menu en haut)
+  3. Descends TOUT EN BAS de la fenetre Parametres
+  4. Tu dois voir (apres Gem Color 1 / 2) :
+       - Glow des gemmes (monde)
+       - Neon barre gemmes
+       - Couleur barre bouclier
+       - Neon barre bouclier
+       - Couleur barre energie
+       - Neon barre energie
+       - Leaderboard galaxie + neon pseudo
+       - Couleur neon pseudo (leaderboard)
 
-CE QUI CHANGE APRES PATCH
-  • Parametres (menu Starblast) — nouvelles options :
-      - Glow des gemmes (monde)
-      - Neon barre gemmes
-      - Couleur barre bouclier + Neon barre bouclier
-      - Couleur barre energie + Neon barre energie
-      - Leaderboard galaxie + neon pseudo
-      - Couleur neon pseudo (leaderboard)
-  • Gem Color 1 / 2 (deja dans le Launcher) = couleur des gemmes en jeu
-  • Modif vaisseau : affichage corrige (plus de preview geante)
+  Si tu ne les vois pas -> le patch n est pas actif (voir depannage).
 
-APRES RE-PATCH MANUEL (sans auto-update)
-  1. Relance PATCH-LAUNCHER.bat
-  2. Ouvre Parametres dans le menu Starblast
-  3. Active les 2 nouvelles options en bas
-  4. Change Gem Color 1 pour la couleur des gemmes
-  5. En partie : TAB pour voir le leaderboard neon
+================================================
+ CE QUI CHANGE EN JEU (apres patch OK)
+================================================
+  • Gemmes blanches / glow (si options activees)
+  • Barres HUD neon (bouclier, energie, gemmes)
+  • TAB en partie : leaderboard avec galaxie sur TON pseudo
+  • Ecran welcome : barre couleurs vaisseau (noir, gris, teintes)
+
+  Gem Color 1 / 2 (deja dans le Launcher) = teinte des gemmes en monde.
+
+================================================
+ VERIFIER QUE CA MARCHE (preuve, pas opinion)
+================================================
+
+  A) VERIFY-MODS.bat
+     -> Version bundle local : 1.1.11
+     -> app.asar patche : OUI
+
+  B) En jeu, F12 (console) :
+     window.__SB_DESKTOP_MODS_VERSION
+     -> doit afficher "1.1.11"
+
+     window.__SB_DESKTOP_LAUNCHER_PATCH
+     -> doit afficher true
+
+  Si false ou undefined -> tu n es pas dans le Launcher patche
+  (navigateur normal, ou patch echoue).
+
+================================================
+ MISE A JOUR (sans retélécharger le zip entier)
+================================================
+  1. Fermer Starblast Launcher
+  2. Double-clic UPDATE-LAUNCHER.bat
+  3. Relancer le Launcher
+
+================================================
+ DEPANNAGE
+================================================
+
+  "PATCH-LAUNCHER a plante"
+    -> Utilise le zip v1.1.12 ou plus recent
+    -> Ou UPDATE-LAUNCHER.bat a la place
+
+  "Je ne vois pas les options Parametres"
+    -> VERIFY-MODS.bat : app.asar patche = OUI ?
+    -> Tu joues bien via le Launcher, pas Chrome direct ?
+    -> Parametres depuis l ecran d ACCUEIL du Launcher
+    -> Scroll en bas de la fenetre Parametres
+
+  "Les options sont la mais rien ne change en jeu"
+    -> Coche les options (neon, glow, leaderboard)
+    -> Change Gem Color 1
+    -> Relance une PARTIE (pas seulement le menu)
+    -> TAB pour le leaderboard neon
+
+  Restaurer Launcher original :
+    resources\app.asar.bak  ->  renommer en  app.asar
 
 IMPORTANT
   • Usage perso uniquement (licence du Launcher)
-  • Ne pas renvoyer le Launcher patche a d'autres personnes
-  • Si probleme : restaurer resources\app.asar.bak en app.asar
+  • Ne pas redistribuer le Launcher patche

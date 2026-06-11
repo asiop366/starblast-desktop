@@ -24,7 +24,7 @@ echo.
 
 echo [1/2] Mise a jour des scripts patcher...
 set "SCRIPTS_BASE=https://raw.githubusercontent.com/asiop366/starblast-desktop/main/patch-launcher/scripts"
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$b='%SCRIPTS_BASE%'; $files=@('mod-sync.js','find-launcher-install.js','patch-starblast-launcher.js','update-launcher-mods.js','verify-mods.js','build-mods-bundle.js'); foreach($f in $files){ try { Invoke-WebRequest -Uri ($b+'/'+$f) -OutFile (Join-Path 'scripts' $f) -UseBasicParsing; Write-Host ('  OK '+$f) } catch { Write-Host ('  WARN '+$f+' (copie locale)') } }"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$b='%SCRIPTS_BASE%'; $files=@('mod-sync.js','find-launcher-install.js','patch-starblast-launcher.js','update-launcher-mods.js','verify-mods.js','verify-launcher-patch.js','build-mods-bundle.js'); foreach($f in $files){ try { Invoke-WebRequest -Uri ($b+'/'+$f) -OutFile (Join-Path 'scripts' $f) -UseBasicParsing; Write-Host ('  OK '+$f) } catch { Write-Host ('  WARN '+$f+' (copie locale)') } }"
 if errorlevel 1 (
   echo WARN: telechargement scripts echoue, utilisation des fichiers locaux.
 )

@@ -15,6 +15,11 @@ echo ============================================
 "%NODE%" scripts\verify-mods.js
 if errorlevel 1 goto Fail
 
+echo.
+echo --- Patch installe dans Starblast Launcher ? ---
+"%NODE%" scripts\verify-launcher-patch.js
+if errorlevel 1 goto Fail
+
 echo Dans le jeu (F12 console navigateur):
 echo   window.__SB_DESKTOP_MODS_VERSION
 echo doit afficher la meme version.
