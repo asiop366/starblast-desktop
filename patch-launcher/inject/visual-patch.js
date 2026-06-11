@@ -77,14 +77,40 @@
     }
   }
 
-  function readLauncherColor(exp, key, fallback) {
+  function readSbParam(key, fallback) {
     try {
-      var v = exp.check(key);
-      if (v) return String(v);
+      var raw = localStorage.getItem(key);
+      if (raw != null) {
+        var parsed = JSON.parse(raw);
+        if (parsed !== null && parsed !== undefined) return parsed;
+      }
     } catch (e) {
       // ignore
     }
     return fallback;
+  }
+
+  function readLauncherColor(exp, key, fallback) {
+    var fromStore = readSbParam(key, undefined);
+    if (fromStore !== undefined) return String(fromStore);
+    try {
+      var v = exp.check(key);
+      if (v && typeof v === 'string' && v.charAt(0) === '#') return String(v);
+      if (v && typeof v === 'string' && v.indexOf('#') >= 0) return String(v);
+    } catch (e) {
+      // ignore
+    }
+    return fallback;
+  }
+
+  function readLauncherBool(exp, key, fallback) {
+    var fromStore = readSbParam(key, undefined);
+    if (fromStore !== undefined) return !!fromStore;
+    try {
+      return !!exp.check(key);
+    } catch (e) {
+      return fallback;
+    }
   }
 
   function getSettings() {
@@ -101,13 +127,13 @@
         }
         return normalizeSettings({
           gemColor: gem,
-          gemWorldGlow: !!exp.check('sb_gem_world_glow'),
-          gemBarNeon: !!exp.check('sb_gem_glow'),
+          gemWorldGlow: readLauncherBool(exp, 'sb_gem_world_glow', true),
+          gemBarNeon: readLauncherBool(exp, 'sb_gem_glow', true),
           shieldColor: readLauncherColor(exp, 'sb_shield_color', DEFAULTS.shieldColor),
-          shieldBarNeon: !!exp.check('sb_shield_neon'),
+          shieldBarNeon: readLauncherBool(exp, 'sb_shield_neon', true),
           energyColor: readLauncherColor(exp, 'sb_energy_color', DEFAULTS.energyColor),
-          energyBarNeon: !!exp.check('sb_energy_neon'),
-          leaderboardNeon: !!exp.check('sb_lb_neon'),
+          energyBarNeon: readLauncherBool(exp, 'sb_energy_neon', true),
+          leaderboardNeon: readLauncherBool(exp, 'sb_lb_neon', true),
           leaderboardColor: readLauncherColor(exp, 'sb_lb_color', DEFAULTS.leaderboardColor),
           fovMultiplier: (window.__sbDesktopSettings && window.__sbDesktopSettings.fovMultiplier) || DEFAULTS.fovMultiplier
         });
@@ -158,9 +184,9 @@
   function neonRgbFromHex(hex) {
     var rgb = hexToRgb01(hexToInt(hex));
     return [
-      Math.min(1, rgb[0] + 0.28),
-      Math.min(1, rgb[1] + 0.28),
-      Math.min(1, rgb[2] + 0.28)
+      Math.min(1, rgb[0] * 1.15 + 0.35),
+      Math.min(1, rgb[1] * 1.15 + 0.35),
+      Math.min(1, rgb[2] * 1.15 + 0.35)
     ];
   }
 
@@ -178,6 +204,8 @@
     sharedMaterialScanDone = false;
     scorePanelHooked = false;
     refreshGemMaterials();
+    if (cachedFigures) patchFiguresInstance(cachedFigures);
+    else if (cachedHudGeom) patchHudGeometry(cachedHudGeom);
   });
 
   function isPhong(mat) {
@@ -306,8 +334,9 @@
     if (mat.specular) setHex(mat.specular, COLORS.white);
     if (s.gemWorldGlow !== false) {
       if (mat.emissive) setHex(mat.emissive, COLORS.crystalEmissive);
-      mat.shininess = 130;
-      if (mat.transparent) mat.opacity = Math.max(mat.opacity || 0.7, 0.94);
+      mat.shininess = s.gemBarNeon !== false ? 180 : 130;
+      if (mat.emissiveIntensity != null) mat.emissiveIntensity = s.gemBarNeon !== false ? 1.2 : 0.6;
+      if (mat.transparent) mat.opacity = Math.max(mat.opacity || 0.7, s.gemBarNeon !== false ? 0.98 : 0.94);
     } else {
       if (mat.emissive) setHex(mat.emissive, 0x111111);
       mat.shininess = 48;
@@ -440,24 +469,35 @@
     var opac = geom.attributes.opac && geom.attributes.opac.array;
     var sizes = geom.attributes.Ol11I && geom.attributes.Ol11I.array;
     var glowRgb = neonRgbFromHex(fillHex);
+    var hotRgb = [
+      Math.min(1, glowRgb[0] + 0.18),
+      Math.min(1, glowRgb[1] + 0.18),
+      Math.min(1, glowRgb[2] + 0.18)
+    ];
     var end = startIndex + HUD_DISPLAY_SIZE;
 
     for (var i = startIndex; i < end; i++) {
       var fig = figures[i];
       if (fig === 16) {
-        colors[3 * i] = glowRgb[0];
-        colors[3 * i + 1] = glowRgb[1];
-        colors[3 * i + 2] = glowRgb[2];
+        colors[3 * i] = hotRgb[0];
+        colors[3 * i + 1] = hotRgb[1];
+        colors[3 * i + 2] = hotRgb[2];
         if (opac) opac[i] = 1;
-        if (sizes) sizes[i] = 0.026;
+        if (sizes) sizes[i] = 0.038;
       } else if (fig === 0) {
-        colors[3 * i] = 0;
-        colors[3 * i + 1] = 0;
-        colors[3 * i + 2] = 0;
+        colors[3 * i] = glowRgb[0] * 0.12;
+        colors[3 * i + 1] = glowRgb[1] * 0.12;
+        colors[3 * i + 2] = glowRgb[2] * 0.12;
+        if (opac) opac[i] = 0.85;
       } else if (fig === 11) {
         colors[3 * i] = 1;
         colors[3 * i + 1] = 1;
         colors[3 * i + 2] = 1;
+        if (sizes) sizes[i] = Math.max(sizes[i] || 0.02, 0.028);
+      } else if (fig > 0 && fig !== 16) {
+        colors[3 * i] = Math.min(1, glowRgb[0] * 0.55 + 0.25);
+        colors[3 * i + 1] = Math.min(1, glowRgb[1] * 0.55 + 0.25);
+        colors[3 * i + 2] = Math.min(1, glowRgb[2] * 0.55 + 0.25);
       }
     }
   }
@@ -717,11 +757,29 @@
   }
 
   function getPlayerName() {
-    var inp = document.querySelector('#player input');
-    if (inp && inp.value) return inp.value.trim();
     var client = findGameClient();
     if (client && client.player_name) return String(client.player_name).trim();
-    return window.__sbDesktopPlayerName || '';
+    if (window.__sbDesktopPlayerName) return String(window.__sbDesktopPlayerName).trim();
+    var inp = document.querySelector('#player input');
+    if (inp && inp.value) return inp.value.trim();
+    try {
+      var stored = localStorage.getItem('lIlO1');
+      if (stored) return String(stored).trim();
+    } catch (e) { /* ignore */ }
+    return '';
+  }
+
+  function normalizePlayerName(name) {
+    return String(name || '').trim().toLowerCase();
+  }
+
+  function namesMatch(rowName, playerName) {
+    var a = normalizePlayerName(rowName);
+    var b = normalizePlayerName(playerName);
+    if (!a || !b) return false;
+    if (a === b) return true;
+    if (a.indexOf(b) >= 0 || b.indexOf(a) >= 0) return true;
+    return a.replace(/\s+/g, '') === b.replace(/\s+/g, '');
   }
 
   function syncPlayerName() {
@@ -733,15 +791,16 @@
     var c = ctx && ctx.canvas;
     if (!c) return false;
     var ratio = c.width / Math.max(1, c.height);
-    return c.width >= 180 && c.height >= 80 && ratio >= 0.65 && ratio <= 2.5;
+    return c.width >= 120 && c.height >= 60 && ratio >= 0.45 && ratio <= 3.5;
   }
 
   function isPlayerScoreText(text) {
     var name = getPlayerName();
     if (!name || name.length < 1) return false;
     var str = String(text).trim();
-    if (str.indexOf(name) < 0) return false;
-    return /^\d+\.\s+/.test(str);
+    if (!/^\d+\.\s+/.test(str)) return false;
+    var rowName = str.replace(/^\d+\.\s+/, '').trim();
+    return namesMatch(rowName, name);
   }
 
   function galaxySeed(w, h) {
@@ -836,15 +895,20 @@
     ctx.miterLimit = 2;
     ctx.textAlign = prev.textAlign || 'left';
 
-    ctx.lineWidth = Math.max(4.5, h * 0.16);
+    ctx.lineWidth = Math.max(6, h * 0.2);
     ctx.strokeStyle = neonHot;
     ctx.shadowColor = neon;
+    ctx.shadowBlur = 38;
+    origStrokeText.call(ctx, text, x, y, maxWidth);
+
+    ctx.lineWidth = Math.max(3.5, h * 0.12);
+    ctx.strokeStyle = neonSoft;
     ctx.shadowBlur = 22;
     origStrokeText.call(ctx, text, x, y, maxWidth);
 
-    ctx.lineWidth = Math.max(2.2, h * 0.09);
-    ctx.strokeStyle = neonSoft;
-    ctx.shadowBlur = 12;
+    ctx.lineWidth = Math.max(1.8, h * 0.06);
+    ctx.strokeStyle = neon;
+    ctx.shadowBlur = 14;
     origStrokeText.call(ctx, text, x, y, maxWidth);
 
     ctx.shadowBlur = 0;
@@ -894,7 +958,73 @@
     scorePanelHooked = true;
   }
 
+  function hookScorePanelPrototype() {
+    if (window.__sbScoreProtoHooked) return;
+    var stack = [window];
+    var seen = typeof WeakSet === 'function' ? new WeakSet() : null;
+
+    while (stack.length) {
+      var obj = stack.pop();
+      if (!obj || typeof obj !== 'object') continue;
+      if (seen) {
+        if (seen.has(obj)) continue;
+        seen.add(obj);
+      }
+
+      if (typeof obj === 'function' && obj.prototype &&
+          typeof obj.prototype.ll1OO === 'function' &&
+          typeof obj.prototype.updateScore === 'function' &&
+          !obj.prototype.__sbLbProtoHooked) {
+        var src = obj.prototype.ll1OO.toString();
+        if (src.indexOf('getUint8(1)') >= 0 && src.indexOf('player_name') >= 0) {
+          var originalDraw = obj.prototype.ll1OO;
+          obj.prototype.ll1OO = function (ctx) {
+            if (!getSettings().leaderboardNeon || !ctx || !ctx.fillText) {
+              return originalDraw.call(this, ctx);
+            }
+
+            var origFillText = ctx.fillText;
+            var origFillRect = ctx.fillRect;
+            var origStrokeText = ctx.strokeText;
+
+            ctx.fillText = function (text, x, y, maxWidth) {
+              syncPlayerName();
+              if (isPlayerScoreText(text)) {
+                return drawLeaderboardNeonName(
+                  ctx, text, x, y, maxWidth, origFillText, origFillRect, origStrokeText
+                );
+              }
+              return origFillText.apply(ctx, arguments);
+            };
+
+            try {
+              return originalDraw.call(this, ctx);
+            } finally {
+              ctx.fillText = origFillText;
+            }
+          };
+          obj.prototype.__sbLbProtoHooked = true;
+          window.__sbScoreProtoHooked = true;
+          scorePanelHooked = true;
+          return;
+        }
+      }
+
+      if (typeof obj === 'function' && obj.prototype) stack.push(obj.prototype);
+      var keys;
+      try { keys = Object.keys(obj); } catch (e) { continue; }
+      for (var i = 0; i < keys.length && i < 35; i++) {
+        try {
+          var child = obj[keys[i]];
+          if (child && typeof child === 'object') stack.push(child);
+          if (typeof child === 'function') stack.push(child);
+        } catch (e) { /* ignore */ }
+      }
+    }
+  }
+
   function hookScorePanelDraw() {
+    hookScorePanelPrototype();
     var stack = [window];
     var seen = typeof WeakSet === 'function' ? new WeakSet() : null;
 
@@ -1149,6 +1279,15 @@
   document.addEventListener('input', function (e) {
     if (e.target && e.target.closest && e.target.closest('#player')) syncPlayerName();
   }, true);
+
+  try {
+    var nameInput = document.querySelector('#player input');
+    if (nameInput) {
+      nameInput.addEventListener('input', syncPlayerName);
+      nameInput.addEventListener('change', syncPlayerName);
+      syncPlayerName();
+    }
+  } catch (e) { /* ignore */ }
 
   var tries = 0;
   var timer = setInterval(function () {
