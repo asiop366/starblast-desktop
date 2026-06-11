@@ -7,6 +7,8 @@ const path = require('path');
 
 const ROOT = path.join(__dirname, '..');
 const launcherMode = process.argv.indexOf('--launcher') >= 0;
+const pkg = require(path.join(ROOT, 'package.json'));
+const modsVersion = process.env.SB_MODS_VERSION || pkg.version;
 const OUT = path.join(
   ROOT,
   'dist',
@@ -36,7 +38,8 @@ const parts = FILES.map(function (rel) {
 });
 
 const banner =
-  '/* Starblast Desktop visual mods' + (launcherMode ? ' — launcher' : '') + ' */\n' +
+  '/* Starblast Desktop visual mods' + (launcherMode ? ' — launcher' : '') + ' v' + modsVersion + ' */\n' +
+  'window.__SB_DESKTOP_MODS_VERSION = ' + JSON.stringify(modsVersion) + ';\n' +
   'window.__SB_DESKTOP_CLIENT = true;\n' +
   (launcherMode ? 'window.__SB_DESKTOP_LAUNCHER_PATCH = true;\n' : '');
 
