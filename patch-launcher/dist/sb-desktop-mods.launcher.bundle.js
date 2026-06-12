@@ -1,5 +1,5 @@
-/* Starblast Desktop visual mods — launcher v1.1.13 */
-window.__SB_DESKTOP_MODS_VERSION = "1.1.13";
+/* Starblast Desktop visual mods — launcher v1.1.14 */
+window.__SB_DESKTOP_MODS_VERSION = "1.1.14";
 window.__SB_DESKTOP_CLIENT = true;
 window.__SB_DESKTOP_LAUNCHER_PATCH = true;
 /**
@@ -96,12 +96,16 @@ window.__SB_DESKTOP_LAUNCHER_PATCH = true;
   function persistLauncherParam(id, value) {
     writeStoredParam(id, value);
     var exp = getSettingsExport();
-    if (!exp || !exp.parameters || !exp.parameters[id]) return;
+    if (!exp || !exp.parameters || !exp.parameters[id]) {
+      setTimeout(syncDesktopSettings, 0);
+      return;
+    }
 
     exp.parameters[id].value = value;
     if (typeof exp.set === 'function') {
       try { exp.set(id, value); } catch (e) { /* ignore */ }
     }
+    setTimeout(syncDesktopSettings, 0);
   }
 
   function buildSettingsFromLauncher(exp) {
@@ -438,11 +442,11 @@ window.__SB_DESKTOP_LAUNCHER_PATCH = true;
   window.__sbDesktopShipColors = true;
 
   var NEUTRALS = [
-    { id: 'black', label: 'Noir', bg: '#141414', hex: '#161616', filter: 'grayscale(1) brightness(0.28) contrast(1.2)', hue: 160 },
+    { id: 'black', label: 'Noir', bg: '#050505', hex: '#050505', filter: 'grayscale(1) brightness(0.22) contrast(1.25)', hue: 160 },
     { id: 'dgray', label: 'Gris fonce', bg: '#3a3a3a', hex: '#3a3a3a', filter: 'grayscale(1) brightness(0.48)', hue: 160 },
     { id: 'gray', label: 'Gris', bg: '#7a7a7a', hex: '#787878', filter: 'grayscale(1) brightness(0.7)', hue: 160 },
     { id: 'lgray', label: 'Gris clair', bg: '#b8b8b8', hex: '#bcbcbc', filter: 'grayscale(1) brightness(0.9)', hue: 160 },
-    { id: 'white', label: 'Blanc', bg: '#f2f2f2', hex: '#f0f0f0', filter: 'grayscale(1) brightness(1.4) contrast(0.85)', hue: 160 }
+    { id: 'white', label: 'Blanc', bg: '#f2f2f2', hex: '#f5f5f5', filter: 'grayscale(1) brightness(1.4) contrast(0.85)', hue: 160 }
   ];
 
   var HUES = [];
@@ -455,6 +459,13 @@ window.__SB_DESKTOP_LAUNCHER_PATCH = true;
   var badgeRendererCache = null;
   var hsvConverterCache = null;
   var shipExporterHooked = false;
+  var ll0O1TrapInstalled = false;
+
+  function hexToInt(hex) {
+    var v = String(hex || '#ffffff').replace('#', '');
+    if (v.length === 3) v = v[0] + v[0] + v[1] + v[1] + v[2] + v[2];
+    return parseInt(v, 16) || 0xffffff;
+  }
 
   function walkObjects(root, visit, maxDepth) {
     var stack = [{ obj: root, depth: 0 }];
@@ -547,19 +558,64 @@ window.__SB_DESKTOP_LAUNCHER_PATCH = true;
   }
 
   function wrapHsvConverter(conv) {
-    if (!conv || typeof conv.hsvToRgbHex !== 'function' || conv.__sbNeutralWrapped) return false;
-    var original = conv.hsvToRgbHex.bind(conv);
-    conv.hsvToRgbHex = function (h, s, l) {
-      var neu = getActiveNeutral();
-      if (neu && neu.hex) return neu.hex;
-      return original(h, s, l);
-    };
+    if (!conv || conv.__sbNeutralWrapped) return false;
+    var wrapped = false;
+
+    if (typeof conv.hsvToRgbHex === 'function') {
+      var originalHex = conv.hsvToRgbHex.bind(conv);
+      conv.hsvToRgbHex = function (h, s, l) {
+        var neu = getActiveNeutral();
+        if (neu && neu.hex && window.__sbApplyingLocalShipColor) return neu.hex;
+        return originalHex(h, s, l);
+      };
+      wrapped = true;
+    }
+
+    if (typeof conv.hsvToRgb === 'function') {
+      var originalRgb = conv.hsvToRgb.bind(conv);
+      conv.hsvToRgb = function (h, s, l) {
+        var neu = getActiveNeutral();
+        if (neu && neu.hex && window.__sbApplyingLocalShipColor) {
+          var n = hexToInt(neu.hex);
+          return {
+            r: (n >> 16) & 255,
+            g: (n >> 8) & 255,
+            b: n & 255
+          };
+        }
+        return originalRgb(h, s, l);
+      };
+      wrapped = true;
+    }
+
+    if (!wrapped) return false;
     conv.__sbNeutralWrapped = true;
     hsvConverterCache = conv;
     return true;
   }
 
+  function installLl0O1Trap() {
+    if (ll0O1TrapInstalled || typeof window === 'undefined') return;
+    ll0O1TrapInstalled = true;
+    var current = window.ll0O1;
+    try {
+      Object.defineProperty(window, 'll0O1', {
+        configurable: true,
+        enumerable: true,
+        get: function () { return current; },
+        set: function (v) {
+          current = v;
+          if (v) wrapHsvConverter(v);
+        }
+      });
+    } catch (e) {
+      // ignore
+    }
+    if (current) wrapHsvConverter(current);
+  }
+
   function hookAllHsvConverters() {
+    installLl0O1Trap();
     var hooked = 0;
     if (typeof window.ll0O1 !== 'undefined' && window.ll0O1) {
       if (wrapHsvConverter(window.ll0O1)) hooked += 1;
@@ -571,6 +627,78 @@ window.__SB_DESKTOP_LAUNCHER_PATCH = true;
     return hooked;
   }
 
+  function isShipTintMaterial(mat) {
+    if (!mat || !mat.color || !mat.color.setHex) return false;
+    if (mat.type !== 'MeshPhongMaterial' && mat.type !== 'MeshLambertMaterial') return false;
+    if (mat.transparent && mat.opacity <= 0.7) return false;
+    if (mat.__sbGemPatched || mat.__sbAsteroidPatched) return false;
+    return true;
+  }
+
+  function applyNeutralMaterial(material, neu) {
+    if (!material || !neu) return;
+    var mats = Array.isArray(material) ? material : [material];
+    var target = hexToInt(neu.hex);
+    for (var i = 0; i < mats.length; i++) {
+      var mat = mats[i];
+      if (!isShipTintMaterial(mat)) continue;
+      mat.color.setHex(target);
+      if (neu.id === 'black') {
+        if (mat.emissive && mat.emissive.setHex) mat.emissive.setHex(0x040404);
+        if (mat.specular && mat.specular.setHex) mat.specular.setHex(0x111111);
+      } else if (neu.id === 'white') {
+        if (mat.emissive && mat.emissive.setHex) mat.emissive.setHex(0x666666);
+      }
+      mat.__sbNeutralTint = neu.id;
+    }
+  }
+
+  function tintObject3D(root, neu) {
+    if (!root || !neu) return;
+    if (typeof root.traverse === 'function') {
+      root.traverse(function (node) {
+        if (node && node.material) applyNeutralMaterial(node.material, neu);
+      });
+      return;
+    }
+    if (root.material) applyNeutralMaterial(root.material, neu);
+  }
+
+  function findLocalShipRoot() {
+    var host = findWelcomeHost();
+    if (!host || !host.lI1IO) return null;
+    return walkObjects(host.lI1IO, function (obj) {
+      if (!obj || typeof obj.updateHue !== 'function' || typeof obj.traverse !== 'function') return null;
+      if (typeof obj.ll1OO === 'function') return null;
+      return obj;
+    }, 12);
+  }
+
+  function tintWelcomeShip(host) {
+    var neu = getActiveNeutral();
+    if (!neu) return;
+    host = host || findWelcomeHost();
+    if (!host || !host.lI1IO || !host.lI1IO.display) return;
+    var display = host.lI1IO.display;
+    if (display.screen) tintObject3D(display.screen, neu);
+    if (display.scene) tintObject3D(display.scene, neu);
+    var ship = findLocalShipRoot();
+    if (ship) tintObject3D(ship, neu);
+  }
+
+  function applyLocalNeutralTint() {
+    var neu = getActiveNeutral();
+    if (!neu) return;
+    window.__sbApplyingLocalShipColor = true;
+    try {
+      tintWelcomeShip(findWelcomeHost());
+      var ship = findLocalShipRoot();
+      if (ship) tintObject3D(ship, neu);
+    } finally {
+      window.__sbApplyingLocalShipColor = false;
+    }
+  }
+
   function hookSetHueTargets() {
     walkObjects(window, function (obj) {
       if (!obj || typeof obj.setHue !== 'function' || obj.__sbSetHueHooked) return null;
@@ -578,11 +706,38 @@ window.__SB_DESKTOP_LAUNCHER_PATCH = true;
       obj.setHue = function (hue) {
         hookAllHsvConverters();
         var neu = getActiveNeutral();
-        var out = original(neu ? neu.hue : hue);
+        window.__sbApplyingLocalShipColor = true;
+        var out;
+        try {
+          out = original(neu ? neu.hue : hue);
+          applyLocalNeutralTint();
+        } finally {
+          window.__sbApplyingLocalShipColor = false;
+        }
         refreshShipPreview();
         return out;
       };
       obj.__sbSetHueHooked = true;
+      return null;
+    }, 12);
+  }
+
+  function hookShipUpdateHue() {
+    walkObjects(window, function (obj) {
+      if (typeof obj !== 'function' || !obj.prototype) return null;
+      if (typeof obj.prototype.updateHue !== 'function' || obj.prototype.__sbShipHueWrapped) return null;
+      if (typeof obj.prototype.updateScore === 'function' && typeof obj.prototype.ll1OO === 'function') return null;
+
+      var original = obj.prototype.updateHue;
+      obj.prototype.updateHue = function (hue) {
+        hookAllHsvConverters();
+        var out = original.call(this, hue);
+        var neu = getActiveNeutral();
+        var localShip = findLocalShipRoot();
+        if (neu && localShip && this === localShip) tintObject3D(this, neu);
+        return out;
+      };
+      obj.prototype.__sbShipHueWrapped = true;
       return null;
     }, 12);
   }
@@ -711,7 +866,13 @@ window.__SB_DESKTOP_LAUNCHER_PATCH = true;
     host = host || findWelcomeHost();
     if (!host || !host.lI1IO || !host.lI1IO.display || !host.lI1IO.display.screen) return;
     var screen = host.lI1IO.display.screen;
-    if (typeof screen.setHue === 'function') screen.setHue(parseInt(hue, 10) || 0);
+    window.__sbApplyingLocalShipColor = true;
+    try {
+      if (typeof screen.setHue === 'function') screen.setHue(parseInt(hue, 10) || 0);
+      applyLocalNeutralTint();
+    } finally {
+      window.__sbApplyingLocalShipColor = false;
+    }
   }
 
   function refreshShipPreview() {
@@ -795,7 +956,13 @@ window.__SB_DESKTOP_LAUNCHER_PATCH = true;
         }
         native.classList.add('selected');
       }
-      host.setColor(hue);
+      window.__sbApplyingLocalShipColor = true;
+      try {
+        host.setColor(hue);
+        applyLocalNeutralTint();
+      } finally {
+        window.__sbApplyingLocalShipColor = false;
+      }
     }
   }
 
@@ -957,6 +1124,7 @@ window.__SB_DESKTOP_LAUNCHER_PATCH = true;
   function hookNeutralShipTint() {
     hookAllHsvConverters();
     hookSetHueTargets();
+    hookShipUpdateHue();
   }
 
   function watch() {
@@ -965,6 +1133,7 @@ window.__SB_DESKTOP_LAUNCHER_PATCH = true;
     hookShipExporter();
     hookSetColor(findWelcomeHost());
     ensureColorBar();
+    applyLocalNeutralTint();
   }
 
   if (document.readyState === 'loading') {
@@ -977,6 +1146,12 @@ window.__SB_DESKTOP_LAUNCHER_PATCH = true;
     watch();
   });
   obs.observe(document.documentElement, { childList: true, subtree: true });
+
+  setInterval(function () {
+    if (!getActiveNeutral()) return;
+    hookNeutralShipTint();
+    applyLocalNeutralTint();
+  }, 400);
 })();
 
 /**
@@ -1061,9 +1236,12 @@ window.__SB_DESKTOP_LAUNCHER_PATCH = true;
   function readSbParam(key, fallback) {
     try {
       var raw = localStorage.getItem(key);
-      if (raw != null) {
+      if (raw == null) return fallback;
+      try {
         var parsed = JSON.parse(raw);
         if (parsed !== null && parsed !== undefined) return parsed;
+      } catch (e) {
+        return raw;
       }
     } catch (e) {
       // ignore
@@ -1071,17 +1249,38 @@ window.__SB_DESKTOP_LAUNCHER_PATCH = true;
     return fallback;
   }
 
+  function normalizeColorString(value, fallback) {
+    var v = String(value == null ? '' : value).trim();
+    if (!v) {
+      v = String(fallback || '#ffffff').trim();
+      if (v.charAt(0) !== '#') v = '#' + v;
+    }
+    if (v.charAt(0) !== '#') v = '#' + v.replace(/^#/, '');
+    if (v.length === 4) {
+      v = '#' + v[1] + v[1] + v[2] + v[2] + v[3] + v[3];
+    }
+    return v.toLowerCase();
+  }
+
   function readLauncherColor(exp, key, fallback) {
-    var fromStore = readSbParam(key, undefined);
-    if (fromStore !== undefined) return String(fromStore);
+    var input = document.getElementById(key);
+    if (input && input.type === 'color' && input.value) {
+      return normalizeColorString(input.value, fallback);
+    }
+    if (exp && exp.parameters && exp.parameters[key] && exp.parameters[key].value != null) {
+      return normalizeColorString(exp.parameters[key].value, fallback);
+    }
     try {
-      var v = exp.check(key);
-      if (v && typeof v === 'string' && v.charAt(0) === '#') return String(v);
-      if (v && typeof v === 'string' && v.indexOf('#') >= 0) return String(v);
+      var checked = exp && exp.check ? exp.check(key) : null;
+      if (checked != null && checked !== false) {
+        return normalizeColorString(String(checked), fallback);
+      }
     } catch (e) {
       // ignore
     }
-    return fallback;
+    var fromStore = readSbParam(key, undefined);
+    if (fromStore !== undefined) return normalizeColorString(String(fromStore), fallback);
+    return normalizeColorString(fallback, fallback);
   }
 
   function readLauncherBool(exp, key, fallback) {
@@ -1166,12 +1365,8 @@ window.__SB_DESKTOP_LAUNCHER_PATCH = true;
   }
 
   function getLeaderboardAccent() {
-    var raw = readSbParam('sb_lb_color', undefined);
-    if (raw !== undefined && raw !== null && raw !== false && raw !== 'false') {
-      return hexToCss(String(raw));
-    }
-    var s = getSettings();
-    return hexToCss(s.leaderboardColor || DEFAULTS.leaderboardColor);
+    var exp = window.module && window.module.exports && window.module.exports.settings;
+    return readLauncherColor(exp, 'sb_lb_color', DEFAULTS.leaderboardColor);
   }
 
   function darkFillFromAccent(accent) {
@@ -1223,6 +1418,13 @@ window.__SB_DESKTOP_LAUNCHER_PATCH = true;
     refreshGemMaterials();
     if (cachedFigures) patchFiguresInstance(cachedFigures);
     else if (cachedHudGeom) patchHudGeometry(cachedHudGeom);
+  });
+
+  window.addEventListener('storage', function (e) {
+    if (!e || !e.key) return;
+    if (e.key === 'sb_lb_color' || e.key === 'sbDesktopSettings') {
+      galaxyPatternCache = {};
+    }
   });
 
   function isPhong(mat) {

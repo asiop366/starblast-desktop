@@ -80,9 +80,12 @@
   function readSbParam(key, fallback) {
     try {
       var raw = localStorage.getItem(key);
-      if (raw != null) {
+      if (raw == null) return fallback;
+      try {
         var parsed = JSON.parse(raw);
         if (parsed !== null && parsed !== undefined) return parsed;
+      } catch (e) {
+        return raw;
       }
     } catch (e) {
       // ignore
@@ -90,17 +93,38 @@
     return fallback;
   }
 
+  function normalizeColorString(value, fallback) {
+    var v = String(value == null ? '' : value).trim();
+    if (!v) {
+      v = String(fallback || '#ffffff').trim();
+      if (v.charAt(0) !== '#') v = '#' + v;
+    }
+    if (v.charAt(0) !== '#') v = '#' + v.replace(/^#/, '');
+    if (v.length === 4) {
+      v = '#' + v[1] + v[1] + v[2] + v[2] + v[3] + v[3];
+    }
+    return v.toLowerCase();
+  }
+
   function readLauncherColor(exp, key, fallback) {
-    var fromStore = readSbParam(key, undefined);
-    if (fromStore !== undefined) return String(fromStore);
+    var input = document.getElementById(key);
+    if (input && input.type === 'color' && input.value) {
+      return normalizeColorString(input.value, fallback);
+    }
+    if (exp && exp.parameters && exp.parameters[key] && exp.parameters[key].value != null) {
+      return normalizeColorString(exp.parameters[key].value, fallback);
+    }
     try {
-      var v = exp.check(key);
-      if (v && typeof v === 'string' && v.charAt(0) === '#') return String(v);
-      if (v && typeof v === 'string' && v.indexOf('#') >= 0) return String(v);
+      var checked = exp && exp.check ? exp.check(key) : null;
+      if (checked != null && checked !== false) {
+        return normalizeColorString(String(checked), fallback);
+      }
     } catch (e) {
       // ignore
     }
-    return fallback;
+    var fromStore = readSbParam(key, undefined);
+    if (fromStore !== undefined) return normalizeColorString(String(fromStore), fallback);
+    return normalizeColorString(fallback, fallback);
   }
 
   function readLauncherBool(exp, key, fallback) {
@@ -185,12 +209,8 @@
   }
 
   function getLeaderboardAccent() {
-    var raw = readSbParam('sb_lb_color', undefined);
-    if (raw !== undefined && raw !== null && raw !== false && raw !== 'false') {
-      return hexToCss(String(raw));
-    }
-    var s = getSettings();
-    return hexToCss(s.leaderboardColor || DEFAULTS.leaderboardColor);
+    var exp = window.module && window.module.exports && window.module.exports.settings;
+    return readLauncherColor(exp, 'sb_lb_color', DEFAULTS.leaderboardColor);
   }
 
   function darkFillFromAccent(accent) {
@@ -242,6 +262,13 @@
     refreshGemMaterials();
     if (cachedFigures) patchFiguresInstance(cachedFigures);
     else if (cachedHudGeom) patchHudGeometry(cachedHudGeom);
+  });
+
+  window.addEventListener('storage', function (e) {
+    if (!e || !e.key) return;
+    if (e.key === 'sb_lb_color' || e.key === 'sbDesktopSettings') {
+      galaxyPatternCache = {};
+    }
   });
 
   function isPhong(mat) {

@@ -92,12 +92,16 @@
   function persistLauncherParam(id, value) {
     writeStoredParam(id, value);
     var exp = getSettingsExport();
-    if (!exp || !exp.parameters || !exp.parameters[id]) return;
+    if (!exp || !exp.parameters || !exp.parameters[id]) {
+      setTimeout(syncDesktopSettings, 0);
+      return;
+    }
 
     exp.parameters[id].value = value;
     if (typeof exp.set === 'function') {
       try { exp.set(id, value); } catch (e) { /* ignore */ }
     }
+    setTimeout(syncDesktopSettings, 0);
   }
 
   function buildSettingsFromLauncher(exp) {
