@@ -209,6 +209,23 @@
   }
 
   function getLeaderboardAccent() {
+    var input = document.getElementById('sb_lb_color');
+    if (input && input.type === 'color' && input.value) {
+      return normalizeColorString(input.value, DEFAULTS.leaderboardColor);
+    }
+    var fromKey = readSbParam('sb_lb_color', undefined);
+    if (fromKey !== undefined && fromKey !== null && fromKey !== '') {
+      return normalizeColorString(String(fromKey), DEFAULTS.leaderboardColor);
+    }
+    try {
+      var desk = JSON.parse(localStorage.getItem('sbDesktopSettings') || '{}');
+      if (desk.leaderboardColor) {
+        return normalizeColorString(desk.leaderboardColor, DEFAULTS.leaderboardColor);
+      }
+    } catch (e) { /* ignore */ }
+    if (window.__sbDesktopSettings && window.__sbDesktopSettings.leaderboardColor) {
+      return normalizeColorString(window.__sbDesktopSettings.leaderboardColor, DEFAULTS.leaderboardColor);
+    }
     var exp = window.module && window.module.exports && window.module.exports.settings;
     return readLauncherColor(exp, 'sb_lb_color', DEFAULTS.leaderboardColor);
   }
@@ -914,16 +931,45 @@
 
   function getPlayerName() {
     var client = findGameClient();
-    if (client && client.player_name && String(client.player_name).trim()) {
-      return String(client.player_name).trim();
+    if (client) {
+      if (client.player_name && String(client.player_name).trim()) {
+        return String(client.player_name).trim();
+      }
+      if (client.I0OlO && client.I0OlO.custom && client.I0OlO.custom.name) {
+        return String(client.I0OlO.custom.name).trim();
+      }
+      if (client.names && typeof client.names.get === 'function') {
+        try {
+          var selfId = client.Ol10l;
+          if (selfId != null) {
+            var n = client.names.get(selfId);
+            if (n && String(n).trim()) return String(n).trim();
+          }
+        } catch (e) { /* ignore */ }
+      }
     }
 
     var inp = document.querySelector('#player input') ||
-      document.querySelector('.modal input[type="text"]');
+      document.querySelector('.modal input[type="text"]') ||
+      document.querySelector('input[name="player_name"]');
     if (inp && inp.value && inp.value.trim()) return inp.value.trim();
+
+    try {
+      var stored = localStorage.getItem('player_name') || localStorage.getItem('playerName');
+      if (stored && String(stored).trim()) return String(stored).trim();
+    } catch (e) { /* ignore */ }
 
     if (window.__sbDesktopPlayerName) return String(window.__sbDesktopPlayerName).trim();
     return '';
+  }
+
+  function textContainsPlayerName(text) {
+    var name = getPlayerName();
+    if (!name) return false;
+    var str = String(text || '');
+    if (!str) return false;
+    if (str.indexOf(name) >= 0) return true;
+    return namesMatch(extractScoreRowName(str), name);
   }
 
   function normalizePlayerName(name) {
@@ -982,7 +1028,11 @@
     if (!getSettings().leaderboardNeon) return false;
     if (!ctx || !ctx.fillText) return false;
     syncPlayerName();
-    return isPlayerScoreText(text, ctx);
+    if (textContainsPlayerName(text)) return true;
+    if (isPlayerScoreText(text, ctx)) return true;
+    if (ctx.__sbScoreboardDraw && textContainsPlayerName(text)) return true;
+    if (isScoreboardCanvas(ctx) && textContainsPlayerName(text)) return true;
+    return false;
   }
 
   function galaxySeed(w, h, accentHex) {
@@ -1151,11 +1201,18 @@
     ctx.shadowColor = '#ffffff';
     origStrokeText.call(ctx, text, x, y, maxWidth);
 
-    // Remplissage sombre à l'intérieur des lettres (style référence)
+    // Remplissage visible dans la couleur choisie (pas seulement le halo)
+    ctx.shadowBlur = 12 + pulse * 8;
+    ctx.shadowColor = neon;
+    ctx.fillStyle = neonHot;
+    var result = origFillText.call(ctx, text, x, y, maxWidth);
+    ctx.shadowBlur = 6;
+    ctx.fillStyle = neonCore;
+    origFillText.call(ctx, text, x, y, maxWidth);
     ctx.shadowBlur = 0;
     ctx.shadowColor = 'transparent';
-    ctx.fillStyle = darkFill;
-    var result = origFillText.call(ctx, text, x, y, maxWidth);
+    ctx.fillStyle = neon;
+    origFillText.call(ctx, text, x, y, maxWidth);
 
     ctx.fillStyle = prev.fill;
     ctx.strokeStyle = prev.stroke;
@@ -1469,6 +1526,15 @@
       }
       return origFillRect.apply(this, arguments);
     };
+
+    CanvasRenderingContext2D.prototype.strokeText = function (text, x, y, maxWidth) {
+      if (shouldDrawLeaderboardFx(this, text)) {
+        return drawLeaderboardNeonName(
+          this, text, x, y, maxWidth, origFillText, origFillRect, origStrokeText
+        );
+      }
+      return origStrokeText.apply(this, arguments);
+    };
   }
 
   function installWheelFov() {
@@ -1509,10 +1575,16 @@
       refreshMeteoriteMaterials();
       refreshAsteroidMeshes();
       window.__sbLastCamera = camera;
+      if (typeof window.__sbBeginShipNeutralFrame === 'function') {
+        window.__sbBeginShipNeutralFrame();
+      }
       if (typeof window.__sbTintLocalShipInScene === 'function') {
         window.__sbTintLocalShipInScene(scene, camera);
       }
       var result = originalRender.call(this, scene, camera);
+      if (typeof window.__sbEndShipNeutralFrame === 'function') {
+        window.__sbEndShipNeutralFrame();
+      }
       refreshRadarPerFrame();
       patchHudPerFrame();
       return result;

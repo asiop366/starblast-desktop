@@ -154,7 +154,17 @@
     if (!obj || !obj.position || !camera || !camera.position) return false;
     var dx = obj.position.x - camera.position.x;
     var dy = obj.position.y - camera.position.y;
-    return Math.sqrt(dx * dx + dy * dy) <= (maxDist || 120);
+    var dz = (obj.position.z || 0) - (camera.position.z || 0);
+    return Math.sqrt(dx * dx + dy * dy + dz * dz) <= (maxDist || 160);
+  }
+
+  function shouldTintMeshMaterial(mat, neu) {
+    if (!mat) return false;
+    if (mat.__sbGemPatched || mat.__sbAsteroidPatched) return false;
+    if (mat.transparent && mat.opacity != null && mat.opacity < 0.5) return false;
+    if (neu && neu.id === 'black') return true;
+    if (mat.transparent && mat.opacity != null && mat.opacity < 0.8) return false;
+    return true;
   }
 
   function isLocalShipInstance(obj) {
@@ -316,37 +326,68 @@
     return false;
   }
 
+  function patchMaterialUniforms(mat, neu, target) {
+    if (!mat || !mat.uniforms) return;
+    var keys = Object.keys(mat.uniforms);
+    for (var k = 0; k < keys.length; k++) {
+      var uni = mat.uniforms[keys[k]];
+      if (!uni) continue;
+      var val = uni.value;
+      if (/hue/i.test(keys[k]) && typeof val === 'number') {
+        uni.value = neu.hue;
+      }
+      if (/sat/i.test(keys[k]) && typeof val === 'number') {
+        uni.value = 0;
+      }
+      if (val && val.setHex) {
+        if (/diffuse|color|tint/i.test(keys[k])) val.setHex(target);
+        if (/emissive/i.test(keys[k])) val.setHex(neu.id === 'black' ? 0x000000 : target);
+      }
+    }
+  }
+
   function applyNeutralMaterial(material, neu) {
     if (!material || !neu) return;
     var mats = Array.isArray(material) ? material : [material];
     var target = hexToInt(neu.hex);
     for (var i = 0; i < mats.length; i++) {
       var mat = mats[i];
-      if (!isShipTintMaterial(mat)) continue;
-      if (mat.color && mat.color.setHex) mat.color.setHex(target);
+      if (!shouldTintMeshMaterial(mat) && !isShipTintMaterial(mat)) continue;
+      if (mat.color && mat.color.setHex) {
+        mat.color.setHex(target);
+        if (neu.id === 'black' && mat.color.setRGB) mat.color.setRGB(0.02, 0.02, 0.02);
+      }
       if (mat.emissive && mat.emissive.setHex) {
-        mat.emissive.setHex(neu.id === 'black' ? 0x000000 : target);
+        mat.emissive.setHex(0x000000);
       }
       if (mat.specular && mat.specular.setHex) {
-        mat.specular.setHex(neu.id === 'black' ? 0x080808 : 0x444444);
+        mat.specular.setHex(neu.id === 'black' ? 0x050505 : 0x333333);
       }
-      if (mat.emissiveIntensity != null) {
-        mat.emissiveIntensity = neu.id === 'black' ? 0 : Math.min(mat.emissiveIntensity, 0.35);
-      }
-      if (mat.uniforms) {
-        if (mat.uniforms.diffuse && mat.uniforms.diffuse.value && mat.uniforms.diffuse.value.setHex) {
-          mat.uniforms.diffuse.value.setHex(target);
-        }
-        if (mat.uniforms.color && mat.uniforms.color.value && mat.uniforms.color.value.setHex) {
-          mat.uniforms.color.value.setHex(target);
-        }
-        if (mat.uniforms.emissive && mat.uniforms.emissive.value && mat.uniforms.emissive.value.setHex) {
-          mat.uniforms.emissive.value.setHex(neu.id === 'black' ? 0x000000 : target);
-        }
-      }
+      if (mat.emissiveIntensity != null) mat.emissiveIntensity = 0;
+      if (mat.shininess != null && neu.id === 'black') mat.shininess = 8;
+      patchMaterialUniforms(mat, neu, target);
       mat.__sbNeutralTint = neu.id;
       mat.needsUpdate = true;
     }
+  }
+
+  function tintMeshesNearCamera(scene, camera, neu) {
+    if (!scene || !scene.traverse || !camera || !neu) return;
+    scene.traverse(function (node) {
+      if (!node || !node.material || !node.position) return;
+      if (!shouldTintMeshMaterial(Array.isArray(node.material) ? node.material[0] : node.material, neu)) return;
+      if (!isNearCamera(node, camera, 180)) return;
+      applyNeutralMaterial(node.material, neu);
+      if (!node.__sbPerRenderTintNode) {
+        var prev = node.onBeforeRender;
+        node.onBeforeRender = function (renderer, scn, cam, geometry, material, group) {
+          if (prev) prev.call(this, renderer, scn, cam, geometry, material, group);
+          var n = getActiveNeutral();
+          if (n && this.material) applyNeutralMaterial(this.material, n);
+        };
+        node.__sbPerRenderTintNode = true;
+      }
+    });
   }
 
   function tintObject3D(root, neu) {
@@ -433,9 +474,11 @@
     var neu = getActiveNeutral();
     if (!neu) return;
     window.__sbApplyingLocalShipColor = true;
-    window.__sbInGameShipTint = !!(scene && camera && !isWelcomeScreen());
+    window.__sbInGameShipTint = !!(scene && camera);
     try {
+      hookAllHsvConverters();
       tintWelcomeShip(findWelcomeHost());
+      if (scene && camera) tintMeshesNearCamera(scene, camera, neu);
       var ship = scene && camera ? findLocalShipFromScene(scene, camera) : findLocalShipRoot();
       if (!ship && scene && camera) ship = findLocalShipFromScene(scene, camera);
       if (ship) {
@@ -933,6 +976,14 @@
 
   window.__sbTintLocalShipInScene = function (scene, camera) {
     window.__sbApplyShipNeutralTint(scene, camera);
+  };
+
+  window.__sbBeginShipNeutralFrame = function () {
+    if (getActiveNeutral() && !isWelcomeScreen()) window.__sbInGameShipTint = true;
+  };
+
+  window.__sbEndShipNeutralFrame = function () {
+    window.__sbInGameShipTint = false;
   };
 
   setInterval(function () {
