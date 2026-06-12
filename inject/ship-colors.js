@@ -26,6 +26,7 @@
   var hsvConverterCache = null;
   var shipExporterHooked = false;
   var ll0O1TrapInstalled = false;
+  var cachedLocalShip = null;
 
   function hexToInt(hex) {
     var v = String(hex || '#ffffff').replace('#', '');
@@ -133,8 +134,110 @@
     var neu = getActiveNeutral();
     if (!neu) return false;
     if (window.__sbApplyingLocalShipColor) return true;
+    if (window.__sbInGameShipTint) return true;
     if (isWelcomeScreen()) return true;
     return false;
+  }
+
+  function getGameClient() {
+    var host = findWelcomeHost();
+    return host && host.lI1IO ? host.lI1IO : null;
+  }
+
+  function isShipLikeObject(obj) {
+    if (!obj || typeof obj.updateHue !== 'function') return false;
+    if (typeof obj.ll1OO === 'function') return false;
+    return typeof obj.traverse === 'function' || !!obj.material;
+  }
+
+  function isNearCamera(obj, camera, maxDist) {
+    if (!obj || !obj.position || !camera || !camera.position) return false;
+    var dx = obj.position.x - camera.position.x;
+    var dy = obj.position.y - camera.position.y;
+    return Math.sqrt(dx * dx + dy * dy) <= (maxDist || 120);
+  }
+
+  function isLocalShipInstance(obj) {
+    if (!obj) return false;
+    if (cachedLocalShip && obj === cachedLocalShip) return true;
+    var client = getGameClient();
+    if (!client) return false;
+    if (client.Ol10l != null && obj.Ol10l != null && obj.Ol10l === client.Ol10l) return true;
+    if (obj.lI1IO === client) return true;
+    if (obj.I0OlO && client.I0OlO && obj.I0OlO === client.I0OlO) return true;
+    if (obj.I0OlO && client.I0OlO && obj.I0OlO.custom && obj.I0OlO.custom === client.I0OlO.custom) return true;
+    return false;
+  }
+
+  function isLocalShipCandidate(obj, camera) {
+    if (!isShipLikeObject(obj)) return false;
+    if (isLocalShipInstance(obj)) return true;
+    if (camera && isNearCamera(obj, camera, 100)) return true;
+    return false;
+  }
+
+  function attachPerRenderTint(root) {
+    if (!root || root.__sbPerRenderTint) return;
+    root.__sbPerRenderTint = true;
+    var visit = function (node) {
+      if (!node || node.__sbPerRenderTintNode) return;
+      node.__sbPerRenderTintNode = true;
+      var prev = node.onBeforeRender;
+      node.onBeforeRender = function (renderer, scene, camera, geometry, material, group) {
+        if (prev) prev.call(this, renderer, scene, camera, geometry, material, group);
+        var neu = getActiveNeutral();
+        if (!neu) return;
+        if (this.material) applyNeutralMaterial(this.material, neu);
+      };
+      if (node.children) {
+        for (var i = 0; i < node.children.length; i++) visit(node.children[i]);
+      }
+    };
+    if (root.traverse) {
+      root.traverse(function (node) { visit(node); });
+    } else {
+      visit(root);
+    }
+  }
+
+  function findLocalShipFromScene(scene, camera) {
+    if (!scene || !scene.traverse) return cachedLocalShip;
+    var best = null;
+    var bestDist = Infinity;
+
+    scene.traverse(function (node) {
+      if (!isShipLikeObject(node)) return;
+      if (isLocalShipInstance(node)) {
+        best = node;
+        bestDist = -1;
+        return;
+      }
+      if (!camera || !node.position) return;
+      var dx = node.position.x - camera.position.x;
+      var dy = node.position.y - camera.position.y;
+      var dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < bestDist) {
+        bestDist = dist;
+        best = node;
+      }
+    });
+
+    if (best && (bestDist < 0 || bestDist < 120)) {
+      cachedLocalShip = best;
+      return best;
+    }
+    return cachedLocalShip;
+  }
+
+  function findAllShipRoots() {
+    var ships = [];
+    var host = findWelcomeHost();
+    if (!host || !host.lI1IO) return ships;
+    walkObjects(host.lI1IO, function (obj) {
+      if (isShipLikeObject(obj)) ships.push(obj);
+      return null;
+    }, 14);
+    return ships;
   }
 
   function neutralRgb(neu) {
@@ -258,13 +361,12 @@
   }
 
   function findLocalShipRoot() {
-    var host = findWelcomeHost();
-    if (!host || !host.lI1IO) return null;
-    return walkObjects(host.lI1IO, function (obj) {
-      if (!obj || typeof obj.updateHue !== 'function' || typeof obj.traverse !== 'function') return null;
-      if (typeof obj.ll1OO === 'function') return null;
-      return obj;
-    }, 12);
+    var ships = findAllShipRoots();
+    for (var i = 0; i < ships.length; i++) {
+      if (isLocalShipInstance(ships[i])) return ships[i];
+    }
+    if (cachedLocalShip) return cachedLocalShip;
+    return ships.length ? ships[0] : null;
   }
 
   function collectWelcomeScenes(host) {
@@ -327,16 +429,23 @@
     syncWelcomeCanvasFilter(neu);
   }
 
-  function applyLocalNeutralTint() {
+  function applyLocalNeutralTint(scene, camera) {
     var neu = getActiveNeutral();
     if (!neu) return;
     window.__sbApplyingLocalShipColor = true;
+    window.__sbInGameShipTint = !!(scene && camera && !isWelcomeScreen());
     try {
       tintWelcomeShip(findWelcomeHost());
-      var ship = findLocalShipRoot();
-      if (ship) tintObject3D(ship, neu);
+      var ship = scene && camera ? findLocalShipFromScene(scene, camera) : findLocalShipRoot();
+      if (!ship && scene && camera) ship = findLocalShipFromScene(scene, camera);
+      if (ship) {
+        cachedLocalShip = ship;
+        tintObject3D(ship, neu);
+        attachPerRenderTint(ship);
+      }
     } finally {
       window.__sbApplyingLocalShipColor = false;
+      window.__sbInGameShipTint = false;
     }
   }
 
@@ -372,11 +481,24 @@
       var original = obj.prototype.updateHue;
       obj.prototype.updateHue = function (hue) {
         hookAllHsvConverters();
-        var out = original.call(this, hue);
         var neu = getActiveNeutral();
-        var localShip = findLocalShipRoot();
-        if (neu && localShip && this === localShip) tintObject3D(this, neu);
-        return out;
+        var cam = window.__sbLastCamera;
+        var isLocal = isLocalShipCandidate(this, cam);
+        if (neu && isLocal) {
+          cachedLocalShip = this;
+          window.__sbApplyingLocalShipColor = true;
+          window.__sbInGameShipTint = true;
+          try {
+            var out = original.call(this, neu.hue);
+            tintObject3D(this, neu);
+            attachPerRenderTint(this);
+            return out;
+          } finally {
+            window.__sbApplyingLocalShipColor = false;
+            window.__sbInGameShipTint = false;
+          }
+        }
+        return original.call(this, hue);
       };
       obj.prototype.__sbShipHueWrapped = true;
       return null;
@@ -498,9 +620,19 @@
       if (neu) {
         host.lI1IO.I0OlO.custom.saturation = 0;
         host.lI1IO.I0OlO.custom.s = 0;
+        host.lI1IO.I0OlO.custom.sb_ship_neutral = neu.id;
+      } else {
+        delete host.lI1IO.I0OlO.custom.sb_ship_neutral;
       }
     }
     if (host.lI1IO.I0OlO.hue !== undefined) host.lI1IO.I0OlO.hue = parsed;
+    try {
+      if (window.ClientStorage && typeof window.ClientStorage.setItem === 'function') {
+        window.ClientStorage.setItem('shipColor', String(parsed));
+        if (neu) window.ClientStorage.setItem('sb_ship_neutral', neu.id);
+        else window.ClientStorage.removeItem('sb_ship_neutral');
+      }
+    } catch (e) { /* ignore */ }
   }
 
   function refreshWelcomeCanvasShip(hue, host) {
@@ -792,16 +924,15 @@
   });
   obs.observe(document.documentElement, { childList: true, subtree: true });
 
-  window.__sbApplyShipNeutralTint = function () {
+  window.__sbApplyShipNeutralTint = function (scene, camera) {
+    hookNeutralShipTint();
+    applyLocalNeutralTint(scene, camera);
     var neu = getActiveNeutral();
-    if (!neu) return;
-    window.__sbApplyingLocalShipColor = true;
-    try {
-      applyLocalNeutralTint();
-      if (isWelcomeScreen()) syncWelcomeCanvasFilter(neu);
-    } finally {
-      window.__sbApplyingLocalShipColor = false;
-    }
+    if (neu && isWelcomeScreen()) syncWelcomeCanvasFilter(neu);
+  };
+
+  window.__sbTintLocalShipInScene = function (scene, camera) {
+    window.__sbApplyShipNeutralTint(scene, camera);
   };
 
   setInterval(function () {
@@ -811,6 +942,6 @@
       if (isWelcomeScreen()) syncWelcomeCanvasFilter(null);
       return;
     }
-    window.__sbApplyShipNeutralTint();
+    window.__sbApplyShipNeutralTint(null, window.__sbLastCamera || null);
   }, 120);
 })();
