@@ -1508,6 +1508,9 @@
       patchHudPerFrame();
       refreshMeteoriteMaterials();
       refreshAsteroidMeshes();
+      if (typeof window.__sbApplyShipNeutralTint === 'function') {
+        window.__sbApplyShipNeutralTint();
+      }
       var result = originalRender.call(this, scene, camera);
       refreshRadarPerFrame();
       patchHudPerFrame();

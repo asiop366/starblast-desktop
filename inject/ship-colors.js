@@ -8,7 +8,7 @@
   window.__sbDesktopShipColors = true;
 
   var NEUTRALS = [
-    { id: 'black', label: 'Noir', bg: '#050505', hex: '#050505', filter: 'grayscale(1) brightness(0.22) contrast(1.25)', hue: 160 },
+    { id: 'black', label: 'Noir', bg: '#050505', hex: '#050505', filter: 'grayscale(1) brightness(0.15) contrast(1.45) saturate(0)', hue: 160 },
     { id: 'dgray', label: 'Gris fonce', bg: '#3a3a3a', hex: '#3a3a3a', filter: 'grayscale(1) brightness(0.48)', hue: 160 },
     { id: 'gray', label: 'Gris', bg: '#7a7a7a', hex: '#787878', filter: 'grayscale(1) brightness(0.7)', hue: 160 },
     { id: 'lgray', label: 'Gris clair', bg: '#b8b8b8', hex: '#bcbcbc', filter: 'grayscale(1) brightness(0.9)', hue: 160 },
@@ -123,6 +123,25 @@
     return id && NEUTRAL_BY_ID[id] ? NEUTRAL_BY_ID[id] : null;
   }
 
+  function isWelcomeScreen() {
+    return !!(document.getElementById('player') ||
+      document.querySelector('.modal .gmodes') ||
+      document.querySelector('.modal #player'));
+  }
+
+  function shouldForceNeutralColor() {
+    var neu = getActiveNeutral();
+    if (!neu) return false;
+    if (window.__sbApplyingLocalShipColor) return true;
+    if (isWelcomeScreen()) return true;
+    return false;
+  }
+
+  function neutralRgb(neu) {
+    var n = hexToInt(neu.hex);
+    return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+  }
+
   function wrapHsvConverter(conv) {
     if (!conv || conv.__sbNeutralWrapped) return false;
     var wrapped = false;
@@ -131,7 +150,7 @@
       var originalHex = conv.hsvToRgbHex.bind(conv);
       conv.hsvToRgbHex = function (h, s, l) {
         var neu = getActiveNeutral();
-        if (neu && neu.hex && window.__sbApplyingLocalShipColor) return neu.hex;
+        if (neu && neu.hex && shouldForceNeutralColor()) return neu.hex;
         return originalHex(h, s, l);
       };
       wrapped = true;
@@ -141,14 +160,7 @@
       var originalRgb = conv.hsvToRgb.bind(conv);
       conv.hsvToRgb = function (h, s, l) {
         var neu = getActiveNeutral();
-        if (neu && neu.hex && window.__sbApplyingLocalShipColor) {
-          var n = hexToInt(neu.hex);
-          return {
-            r: (n >> 16) & 255,
-            g: (n >> 8) & 255,
-            b: n & 255
-          };
-        }
+        if (neu && neu.hex && shouldForceNeutralColor()) return neutralRgb(neu);
         return originalRgb(h, s, l);
       };
       wrapped = true;
@@ -194,11 +206,11 @@
   }
 
   function isShipTintMaterial(mat) {
-    if (!mat || !mat.color || !mat.color.setHex) return false;
-    if (mat.type !== 'MeshPhongMaterial' && mat.type !== 'MeshLambertMaterial') return false;
-    if (mat.transparent && mat.opacity <= 0.7) return false;
+    if (!mat) return false;
     if (mat.__sbGemPatched || mat.__sbAsteroidPatched) return false;
-    return true;
+    if (mat.color && mat.color.setHex) return true;
+    if (mat.uniforms && (mat.uniforms.diffuse || mat.uniforms.color)) return true;
+    return false;
   }
 
   function applyNeutralMaterial(material, neu) {
@@ -208,14 +220,29 @@
     for (var i = 0; i < mats.length; i++) {
       var mat = mats[i];
       if (!isShipTintMaterial(mat)) continue;
-      mat.color.setHex(target);
-      if (neu.id === 'black') {
-        if (mat.emissive && mat.emissive.setHex) mat.emissive.setHex(0x040404);
-        if (mat.specular && mat.specular.setHex) mat.specular.setHex(0x111111);
-      } else if (neu.id === 'white') {
-        if (mat.emissive && mat.emissive.setHex) mat.emissive.setHex(0x666666);
+      if (mat.color && mat.color.setHex) mat.color.setHex(target);
+      if (mat.emissive && mat.emissive.setHex) {
+        mat.emissive.setHex(neu.id === 'black' ? 0x000000 : target);
+      }
+      if (mat.specular && mat.specular.setHex) {
+        mat.specular.setHex(neu.id === 'black' ? 0x080808 : 0x444444);
+      }
+      if (mat.emissiveIntensity != null) {
+        mat.emissiveIntensity = neu.id === 'black' ? 0 : Math.min(mat.emissiveIntensity, 0.35);
+      }
+      if (mat.uniforms) {
+        if (mat.uniforms.diffuse && mat.uniforms.diffuse.value && mat.uniforms.diffuse.value.setHex) {
+          mat.uniforms.diffuse.value.setHex(target);
+        }
+        if (mat.uniforms.color && mat.uniforms.color.value && mat.uniforms.color.value.setHex) {
+          mat.uniforms.color.value.setHex(target);
+        }
+        if (mat.uniforms.emissive && mat.uniforms.emissive.value && mat.uniforms.emissive.value.setHex) {
+          mat.uniforms.emissive.value.setHex(neu.id === 'black' ? 0x000000 : target);
+        }
       }
       mat.__sbNeutralTint = neu.id;
+      mat.needsUpdate = true;
     }
   }
 
@@ -240,16 +267,64 @@
     }, 12);
   }
 
+  function collectWelcomeScenes(host) {
+    var scenes = [];
+    host = host || findWelcomeHost();
+    if (!host || !host.lI1IO) return scenes;
+    walkObjects(host.lI1IO, function (obj) {
+      if (obj && (obj.type === 'Scene' || obj.isScene === true)) scenes.push(obj);
+      return null;
+    }, 14);
+    var display = host.lI1IO.display;
+    if (display && display.scene) scenes.push(display.scene);
+    return scenes;
+  }
+
+  function findWelcomeCanvases() {
+    var list = [];
+    var roots = [
+      document.getElementById('player'),
+      document.querySelector('.modal #player'),
+      document.querySelector('.modal'),
+      findShipPreviewNode()
+    ];
+    for (var r = 0; r < roots.length; r++) {
+      if (!roots[r]) continue;
+      var canvases = roots[r].querySelectorAll('canvas');
+      for (var i = 0; i < canvases.length; i++) list.push(canvases[i]);
+    }
+    return list;
+  }
+
+  function syncWelcomeCanvasFilter(neu) {
+    var filter = neu ? neu.filter : '';
+    var canvases = findWelcomeCanvases();
+    for (var i = 0; i < canvases.length; i++) {
+      canvases[i].style.filter = filter;
+    }
+    var preview = findShipPreviewNode();
+    if (preview) preview.style.filter = filter;
+  }
+
   function tintWelcomeShip(host) {
     var neu = getActiveNeutral();
-    if (!neu) return;
+    if (!neu) {
+      syncWelcomeCanvasFilter(null);
+      return;
+    }
     host = host || findWelcomeHost();
-    if (!host || !host.lI1IO || !host.lI1IO.display) return;
+    if (!host || !host.lI1IO || !host.lI1IO.display) {
+      syncWelcomeCanvasFilter(neu);
+      return;
+    }
     var display = host.lI1IO.display;
     if (display.screen) tintObject3D(display.screen, neu);
     if (display.scene) tintObject3D(display.scene, neu);
+    var scenes = collectWelcomeScenes(host);
+    for (var s = 0; s < scenes.length; s++) tintObject3D(scenes[s], neu);
     var ship = findLocalShipRoot();
     if (ship) tintObject3D(ship, neu);
+    syncWelcomeCanvasFilter(neu);
   }
 
   function applyLocalNeutralTint() {
@@ -458,12 +533,16 @@
 
     var preview = findShipPreviewNode();
     if (preview) {
-      preview.innerHTML = '';
-      var thumb = exporter.exportThumbnail(101, shipHue, parts.finish, parts.laser, 192);
-      if (thumb) {
-        if (neu) thumb = applyNeutralCanvasFilter(thumb, neu);
-        preview.appendChild(thumb);
+      var liveCanvas = preview.querySelector('canvas');
+      if (!liveCanvas) {
+        preview.innerHTML = '';
+        var thumb = exporter.exportThumbnail(101, shipHue, parts.finish, parts.laser, 192);
+        if (thumb) {
+          if (neu) thumb = applyNeutralCanvasFilter(thumb, neu);
+          preview.appendChild(thumb);
+        }
       }
+      if (neu) syncWelcomeCanvasFilter(neu);
     }
 
     var logo = document.querySelector('.ecpverifiedlogo');
@@ -713,9 +792,25 @@
   });
   obs.observe(document.documentElement, { childList: true, subtree: true });
 
+  window.__sbApplyShipNeutralTint = function () {
+    var neu = getActiveNeutral();
+    if (!neu) return;
+    window.__sbApplyingLocalShipColor = true;
+    try {
+      applyLocalNeutralTint();
+      if (isWelcomeScreen()) syncWelcomeCanvasFilter(neu);
+    } finally {
+      window.__sbApplyingLocalShipColor = false;
+    }
+  };
+
   setInterval(function () {
-    if (!getActiveNeutral()) return;
     hookNeutralShipTint();
-    applyLocalNeutralTint();
-  }, 400);
+    var neu = getActiveNeutral();
+    if (!neu) {
+      if (isWelcomeScreen()) syncWelcomeCanvasFilter(null);
+      return;
+    }
+    window.__sbApplyShipNeutralTint();
+  }, 120);
 })();
