@@ -1,6 +1,6 @@
 {
   "name": "starblast-desktop",
-  "version": "1.1.11",
+  "version": "1.1.13",
   "description": "Starblast.io desktop client with custom visuals",
   "main": "main.js",
   "author": "Starblast Desktop",

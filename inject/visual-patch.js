@@ -209,10 +209,20 @@
   function neonRgbFromHex(hex) {
     var rgb = hexToRgb01(hexToInt(hex));
     return [
-      Math.min(1, rgb[0] * 1.15 + 0.35),
-      Math.min(1, rgb[1] * 1.15 + 0.35),
-      Math.min(1, rgb[2] * 1.15 + 0.35)
+      Math.min(1, rgb[0] * 1.55 + 0.55),
+      Math.min(1, rgb[1] * 1.55 + 0.55),
+      Math.min(1, rgb[2] * 1.55 + 0.55)
     ];
+  }
+
+  function neonPulse() {
+    var t = Date.now() * 0.001;
+    return 0.5 + 0.5 * Math.sin(t * 7.5);
+  }
+
+  function neonFlash() {
+    var t = Date.now() * 0.001;
+    return 0.65 + 0.35 * Math.abs(Math.sin(t * 13));
   }
 
   function shouldApplyGameplayVisuals() {
@@ -514,41 +524,48 @@
     var opac = hudAttrArray(geom, 'opac', 'opac');
     var sizes = hudAttrArray(geom, 'Ol11I', 'Ol11I');
     var verts = hudAttrArray(geom, 'position', 'vertices');
+    var pulse = neonPulse();
+    var flash = neonFlash();
     var glowRgb = neonRgbFromHex(fillHex);
     var hotRgb = [
-      Math.min(1, glowRgb[0] * 1.35 + 0.25),
-      Math.min(1, glowRgb[1] * 1.35 + 0.25),
-      Math.min(1, glowRgb[2] * 1.35 + 0.25)
+      Math.min(1, (glowRgb[0] * 1.65 + 0.45) * flash),
+      Math.min(1, (glowRgb[1] * 1.65 + 0.45) * flash),
+      Math.min(1, (glowRgb[2] * 1.65 + 0.45) * flash)
+    ];
+    var coreRgb = [
+      Math.min(1, hotRgb[0] * (0.85 + pulse * 0.3)),
+      Math.min(1, hotRgb[1] * (0.85 + pulse * 0.3)),
+      Math.min(1, hotRgb[2] * (0.85 + pulse * 0.3))
     ];
     var end = startIndex + HUD_DISPLAY_SIZE;
 
     for (var i = startIndex; i < end; i++) {
       var fig = figures[i];
       if (fig === 16) {
-        colors[3 * i] = hotRgb[0];
-        colors[3 * i + 1] = hotRgb[1];
-        colors[3 * i + 2] = hotRgb[2];
+        colors[3 * i] = coreRgb[0];
+        colors[3 * i + 1] = coreRgb[1];
+        colors[3 * i + 2] = coreRgb[2];
         if (opac) opac[i] = 1;
-        if (sizes) sizes[i] = 0.072;
+        if (sizes) sizes[i] = 0.11 + pulse * 0.04;
         if (verts) verts[3 * i + 2] = 0;
       } else if (fig === 0) {
-        colors[3 * i] = Math.min(1, glowRgb[0] * 0.55 + 0.08);
-        colors[3 * i + 1] = Math.min(1, glowRgb[1] * 0.55 + 0.08);
-        colors[3 * i + 2] = Math.min(1, glowRgb[2] * 0.55 + 0.08);
-        if (opac) opac[i] = 0.95;
-        if (sizes) sizes[i] = 0.055;
+        colors[3 * i] = Math.min(1, glowRgb[0] * (0.75 + pulse * 0.25) + 0.15);
+        colors[3 * i + 1] = Math.min(1, glowRgb[1] * (0.75 + pulse * 0.25) + 0.15);
+        colors[3 * i + 2] = Math.min(1, glowRgb[2] * (0.75 + pulse * 0.25) + 0.15);
+        if (opac) opac[i] = 1;
+        if (sizes) sizes[i] = 0.085 + pulse * 0.025;
         if (verts) verts[3 * i + 2] = 0;
       } else if (fig === 11 || fig === 12 || fig === 13) {
         colors[3 * i] = hotRgb[0];
         colors[3 * i + 1] = hotRgb[1];
         colors[3 * i + 2] = hotRgb[2];
-        if (sizes) sizes[i] = Math.max(sizes[i] || 0.02, 0.04);
+        if (sizes) sizes[i] = Math.max(sizes[i] || 0.02, 0.065 + pulse * 0.02);
         if (opac) opac[i] = 1;
       } else if (fig > 0 && fig !== 16) {
-        colors[3 * i] = Math.min(1, glowRgb[0] * 0.75 + 0.2);
-        colors[3 * i + 1] = Math.min(1, glowRgb[1] * 0.75 + 0.2);
-        colors[3 * i + 2] = Math.min(1, glowRgb[2] * 0.75 + 0.2);
-        if (sizes) sizes[i] = Math.max(sizes[i] || 0.015, 0.032);
+        colors[3 * i] = Math.min(1, glowRgb[0] * 1.1 + 0.35);
+        colors[3 * i + 1] = Math.min(1, glowRgb[1] * 1.1 + 0.35);
+        colors[3 * i + 2] = Math.min(1, glowRgb[2] * 1.1 + 0.35);
+        if (sizes) sizes[i] = Math.max(sizes[i] || 0.015, 0.05 + pulse * 0.015);
         if (opac) opac[i] = 1;
       }
     }
@@ -556,7 +573,10 @@
 
   function isScoreboardRowRect(ctx, rw, rh) {
     if (!ctx || !ctx.canvas) return false;
-    return rw >= 60 && rh >= 6 && rh <= Math.max(40, ctx.canvas.height / 2.5);
+    var cw = ctx.canvas.width;
+    var ch = ctx.canvas.height;
+    if (rw >= cw * 0.35 && rh >= 5 && rh <= Math.max(48, ch / 2)) return true;
+    return rw >= 48 && rh >= 5 && rh <= Math.max(40, ch / 2.5);
   }
 
   function patchHudGeometry(geom) {
@@ -904,14 +924,38 @@
     return c.width >= 120 && c.height >= 60 && ratio >= 0.45 && ratio <= 3.5;
   }
 
-  function isPlayerScoreText(text) {
+  function extractScoreRowName(text) {
+    var str = String(text || '').trim();
+    if (!str) return '';
+    if (/^\d+[\.\):\-]\s*/.test(str)) {
+      str = str.replace(/^\d+[\.\):\-]\s*/, '').trim();
+    }
+    return str.replace(/^\[[^\]]+\]\s*/, '').trim();
+  }
+
+  function isPlayerScoreText(text, ctx) {
     var name = getPlayerName();
     if (!name || name.length < 1) return false;
     var str = String(text).trim();
-    if (!/^\d+\.\s+/.test(str)) return false;
-    var rowName = str.replace(/^\d+\.\s+/, '').trim();
-    rowName = rowName.replace(/^\[[^\]]+\]\s*/, '').trim();
-    return namesMatch(rowName, name);
+    if (!str) return false;
+
+    var rowName = extractScoreRowName(str);
+    if (rowName && namesMatch(rowName, name)) return true;
+
+    if (ctx && isScoreboardCanvas(ctx)) {
+      if (namesMatch(str, name)) return true;
+      if (str.indexOf(name) >= 0) return true;
+      if (rowName && rowName.indexOf(name) >= 0) return true;
+    }
+
+    return false;
+  }
+
+  function shouldDrawLeaderboardFx(ctx, text) {
+    if (!getSettings().leaderboardNeon) return false;
+    if (!ctx || !ctx.fillText) return false;
+    syncPlayerName();
+    return isPlayerScoreText(text, ctx);
   }
 
   function galaxySeed(w, h, accentHex) {
@@ -977,31 +1021,32 @@
 
   function drawGalaxyRow(ctx, barTop, barH, origFillRect, accentHex) {
     var w = ctx.canvas.width;
-    var h = Math.max(24, Math.ceil(barH));
+    var h = Math.max(28, Math.ceil(barH));
     var accent = hexToCss(accentHex || getLeaderboardAccent());
     var pattern = galaxySeed(w, h, accent);
-    var rowY = barTop + 2;
-    var rowH = barH - 4;
+    var rowY = Math.max(0, barTop);
+    var rowH = Math.max(18, barH);
+    var pulse = neonPulse();
 
     ctx.save();
     ctx.globalAlpha = 1;
     ctx.shadowColor = accent;
-    ctx.shadowBlur = 14;
+    ctx.shadowBlur = 22 + pulse * 18;
     ctx.drawImage(pattern, 0, 0, w, h, 0, rowY, w, rowH);
     ctx.shadowBlur = 0;
 
     var edge = ctx.createLinearGradient(0, rowY, w, rowY);
-    edge.addColorStop(0, rgbaFromHex(accent, 0.55));
-    edge.addColorStop(0.15, rgbaFromHex(accent, 0.12));
-    edge.addColorStop(0.85, rgbaFromHex(accent, 0.12));
-    edge.addColorStop(1, rgbaFromHex(accent, 0.55));
+    edge.addColorStop(0, rgbaFromHex(accent, 0.75 + pulse * 0.2));
+    edge.addColorStop(0.12, rgbaFromHex(accent, 0.22));
+    edge.addColorStop(0.88, rgbaFromHex(accent, 0.22));
+    edge.addColorStop(1, rgbaFromHex(accent, 0.75 + pulse * 0.2));
     ctx.fillStyle = edge;
     origFillRect.call(ctx, 0, rowY, w, rowH);
 
-    ctx.strokeStyle = rgbaFromHex(accent, 0.45);
-    ctx.lineWidth = 1;
+    ctx.strokeStyle = rgbaFromHex(lightenHex(accent, 40), 0.65 + pulse * 0.25);
+    ctx.lineWidth = 1.5;
     ctx.shadowColor = accent;
-    ctx.shadowBlur = 6;
+    ctx.shadowBlur = 12 + pulse * 10;
     ctx.strokeRect(0.5, rowY + 0.5, w - 1, rowH - 1);
     ctx.restore();
   }
@@ -1014,10 +1059,13 @@
     var canvasH = ctx.canvas && ctx.canvas.height ? ctx.canvas.height : 440;
     var rowH = canvasH / 11;
     var h = Math.max(16, rowH * 0.85);
+    var pulse = neonPulse();
+    var flash = neonFlash();
     var neon = getLeaderboardAccent();
-    var neonCore = lightenHex(neon, 45);
-    var neonHot = lightenHex(neon, 25);
-    var neonBloom = lightenHex(neon, 70);
+    var neonCore = lightenHex(neon, 55);
+    var neonHot = lightenHex(neon, 35);
+    var neonBloom = lightenHex(neon, 85);
+    var neonFlashColor = lightenHex(neon, 95);
     var darkFill = darkFillFromAccent(neon);
     var barTop;
     var barH;
@@ -1048,31 +1096,31 @@
     ctx.textAlign = prev.textAlign || 'left';
     ctx.textBaseline = prev.textBaseline || 'middle';
 
-    // Couche 1 — halo externe diffus (néon LED)
-    ctx.lineWidth = Math.max(8, h * 0.34);
-    ctx.strokeStyle = rgbaFromHex(neon, 0.28);
+    // Couche 1 — halo externe (flash LED)
+    ctx.lineWidth = Math.max(12, h * 0.48) * (0.85 + pulse * 0.3);
+    ctx.strokeStyle = rgbaFromHex(neon, 0.42 + pulse * 0.28);
     ctx.shadowColor = neon;
-    ctx.shadowBlur = 52;
+    ctx.shadowBlur = 72 + pulse * 48;
     origStrokeText.call(ctx, text, x, y, maxWidth);
 
-    // Couche 2 — glow moyen (couleur paramètres)
-    ctx.lineWidth = Math.max(5.5, h * 0.22);
-    ctx.strokeStyle = rgbaFromHex(neonHot, 0.72);
+    // Couche 2 — glow moyen
+    ctx.lineWidth = Math.max(8, h * 0.32) * flash;
+    ctx.strokeStyle = rgbaFromHex(neonHot, 0.88);
     ctx.shadowColor = neonHot;
-    ctx.shadowBlur = 34;
+    ctx.shadowBlur = 48 + pulse * 28;
     origStrokeText.call(ctx, text, x, y, maxWidth);
 
-    // Couche 3 — contour LED vif
-    ctx.lineWidth = Math.max(3, h * 0.13);
+    // Couche 3 — contour vif
+    ctx.lineWidth = Math.max(5, h * 0.18);
     ctx.strokeStyle = neonCore;
     ctx.shadowColor = neonBloom;
-    ctx.shadowBlur = 18;
+    ctx.shadowBlur = 28 + pulse * 16;
     origStrokeText.call(ctx, text, x, y, maxWidth);
 
-    // Couche 4 — trait intérieur lumineux
-    ctx.lineWidth = Math.max(1.2, h * 0.05);
-    ctx.strokeStyle = neonBloom;
-    ctx.shadowBlur = 8;
+    // Couche 4 — trait blanc flash
+    ctx.lineWidth = Math.max(2.2, h * 0.08);
+    ctx.strokeStyle = neonFlashColor;
+    ctx.shadowBlur = 14 + flash * 12;
     ctx.shadowColor = '#ffffff';
     origStrokeText.call(ctx, text, x, y, maxWidth);
 
@@ -1107,8 +1155,7 @@
       var origStrokeText = ctx.strokeText;
 
       ctx.fillText = function (text, x, y, maxWidth) {
-        syncPlayerName();
-        if (isPlayerScoreText(text)) {
+        if (shouldDrawLeaderboardFx(ctx, text)) {
           return drawLeaderboardNeonName(
             ctx, text, x, y, maxWidth, origFillText, origFillRect, origStrokeText
           );
@@ -1130,6 +1177,7 @@
         ctx.fillText = origFillText;
         ctx.fillRect = origFillRect;
         ctx.__sbScoreboardDraw = false;
+        ctx.__sbPlayerRowRect = null;
       }
     };
     panel.__sbLbInstHooked = true;
@@ -1165,8 +1213,7 @@
             var origStrokeText = ctx.strokeText;
 
             ctx.fillText = function (text, x, y, maxWidth) {
-              syncPlayerName();
-              if (isPlayerScoreText(text)) {
+              if (shouldDrawLeaderboardFx(ctx, text)) {
                 return drawLeaderboardNeonName(
                   ctx, text, x, y, maxWidth, origFillText, origFillRect, origStrokeText
                 );
@@ -1188,6 +1235,7 @@
               ctx.fillText = origFillText;
               ctx.fillRect = origFillRect;
               ctx.__sbScoreboardDraw = false;
+              ctx.__sbPlayerRowRect = null;
             }
           };
           obj.prototype.__sbLbProtoHooked = true;
@@ -1328,8 +1376,7 @@
           var origStrokeText = ctx.strokeText;
 
           ctx.fillText = function (text, x, y, maxWidth) {
-            syncPlayerName();
-            if (isPlayerScoreText(text)) {
+            if (shouldDrawLeaderboardFx(ctx, text)) {
               return drawLeaderboardNeonName(
                 ctx, text, x, y, maxWidth, origFillText, origFillRect, origStrokeText
               );
@@ -1351,6 +1398,7 @@
             ctx.fillText = origFillText;
             ctx.fillRect = origFillRect;
             ctx.__sbScoreboardDraw = false;
+            ctx.__sbPlayerRowRect = null;
           }
         };
         proto.__sbLbHooked = true;
@@ -1379,8 +1427,7 @@
     var origStrokeText = CanvasRenderingContext2D.prototype.strokeText;
 
     CanvasRenderingContext2D.prototype.fillText = function (text, x, y, maxWidth) {
-      if (getSettings().leaderboardNeon && isPlayerScoreText(text)) {
-        syncPlayerName();
+      if (shouldDrawLeaderboardFx(this, text)) {
         return drawLeaderboardNeonName(
           this, text, x, y, maxWidth, origFillText, origFillRect, origStrokeText
         );
@@ -1389,7 +1436,8 @@
     };
 
     CanvasRenderingContext2D.prototype.fillRect = function (rx, ry, rw, rh) {
-      if (getSettings().leaderboardNeon && this.__sbScoreboardDraw && isScoreboardRowRect(this, rw, rh)) {
+      if (getSettings().leaderboardNeon && isScoreboardRowRect(this, rw, rh) &&
+          (this.__sbScoreboardDraw || isScoreboardCanvas(this))) {
         this.__sbPlayerRowRect = { x: rx, y: ry, w: rw, h: rh };
       }
       return origFillRect.apply(this, arguments);

@@ -8,11 +8,11 @@
   window.__sbDesktopShipColors = true;
 
   var NEUTRALS = [
-    { id: 'black', label: 'Noir', bg: '#141414', filter: 'grayscale(1) brightness(0.32) contrast(1.15)', hue: 0 },
-    { id: 'dgray', label: 'Gris fonce', bg: '#3a3a3a', filter: 'grayscale(1) brightness(0.5)', hue: 0 },
-    { id: 'gray', label: 'Gris', bg: '#7a7a7a', filter: 'grayscale(1) brightness(0.72)', hue: 0 },
-    { id: 'lgray', label: 'Gris clair', bg: '#b8b8b8', filter: 'grayscale(1) brightness(0.92)', hue: 0 },
-    { id: 'white', label: 'Blanc', bg: '#f2f2f2', filter: 'grayscale(1) brightness(1.35) contrast(0.88)', hue: 48 }
+    { id: 'black', label: 'Noir', bg: '#141414', hex: '#161616', filter: 'grayscale(1) brightness(0.28) contrast(1.2)', hue: 160 },
+    { id: 'dgray', label: 'Gris fonce', bg: '#3a3a3a', hex: '#3a3a3a', filter: 'grayscale(1) brightness(0.48)', hue: 160 },
+    { id: 'gray', label: 'Gris', bg: '#7a7a7a', hex: '#787878', filter: 'grayscale(1) brightness(0.7)', hue: 160 },
+    { id: 'lgray', label: 'Gris clair', bg: '#b8b8b8', hex: '#bcbcbc', filter: 'grayscale(1) brightness(0.9)', hue: 160 },
+    { id: 'white', label: 'Blanc', bg: '#f2f2f2', hex: '#f0f0f0', filter: 'grayscale(1) brightness(1.4) contrast(0.85)', hue: 160 }
   ];
 
   var HUES = [];
@@ -99,12 +99,62 @@
 
   function findHsvConverter() {
     if (hsvConverterCache && hsvConverterCache.hsvToRgbHex) return hsvConverterCache;
+    if (typeof window.ll0O1 !== 'undefined' && window.ll0O1 && window.ll0O1.hsvToRgbHex) {
+      hsvConverterCache = window.ll0O1;
+      return window.ll0O1;
+    }
     var found = walkObjects(window, function (obj) {
       if (obj && typeof obj.hsvToRgbHex === 'function') return obj;
       return null;
-    }, 12);
+    }, 14);
     if (found) hsvConverterCache = found;
     return found;
+  }
+
+  function getActiveNeutral() {
+    var id = localStorage.getItem('sb_ship_neutral') || '';
+    return id && NEUTRAL_BY_ID[id] ? NEUTRAL_BY_ID[id] : null;
+  }
+
+  function wrapHsvConverter(conv) {
+    if (!conv || typeof conv.hsvToRgbHex !== 'function' || conv.__sbNeutralWrapped) return false;
+    var original = conv.hsvToRgbHex.bind(conv);
+    conv.hsvToRgbHex = function (h, s, l) {
+      var neu = getActiveNeutral();
+      if (neu && neu.hex) return neu.hex;
+      return original(h, s, l);
+    };
+    conv.__sbNeutralWrapped = true;
+    hsvConverterCache = conv;
+    return true;
+  }
+
+  function hookAllHsvConverters() {
+    var hooked = 0;
+    if (typeof window.ll0O1 !== 'undefined' && window.ll0O1) {
+      if (wrapHsvConverter(window.ll0O1)) hooked += 1;
+    }
+    walkObjects(window, function (obj) {
+      if (wrapHsvConverter(obj)) hooked += 1;
+      return null;
+    }, 14);
+    return hooked;
+  }
+
+  function hookSetHueTargets() {
+    walkObjects(window, function (obj) {
+      if (!obj || typeof obj.setHue !== 'function' || obj.__sbSetHueHooked) return null;
+      var original = obj.setHue.bind(obj);
+      obj.setHue = function (hue) {
+        hookAllHsvConverters();
+        var neu = getActiveNeutral();
+        var out = original(neu ? neu.hue : hue);
+        refreshShipPreview();
+        return out;
+      };
+      obj.__sbSetHueHooked = true;
+      return null;
+    }, 12);
   }
 
   function applyNeutralCanvasFilter(node, neu) {
@@ -214,9 +264,16 @@
   function syncCustomHue(hue, host) {
     host = host || findWelcomeHost();
     if (!host || !host.lI1IO || !host.lI1IO.I0OlO) return;
-    var parsed = parseInt(hue, 10);
+    var neu = getActiveNeutral();
+    var parsed = neu ? neu.hue : parseInt(hue, 10);
     if (isNaN(parsed)) parsed = 0;
-    if (host.lI1IO.I0OlO.custom) host.lI1IO.I0OlO.custom.hue = parsed;
+    if (host.lI1IO.I0OlO.custom) {
+      host.lI1IO.I0OlO.custom.hue = parsed;
+      if (neu) {
+        host.lI1IO.I0OlO.custom.saturation = 0;
+        host.lI1IO.I0OlO.custom.s = 0;
+      }
+    }
     if (host.lI1IO.I0OlO.hue !== undefined) host.lI1IO.I0OlO.hue = parsed;
   }
 
@@ -326,10 +383,14 @@
   function applySelection(hue, neutralId) {
     hue = parseInt(hue, 10);
     if (isNaN(hue)) hue = 0;
+    hookAllHsvConverters();
+    hookSetHueTargets();
 
     if (neutralId && NEUTRAL_BY_ID[neutralId]) {
+      var neu = NEUTRAL_BY_ID[neutralId];
       localStorage.setItem('sb_ship_neutral', neutralId);
-      localStorage.setItem('shipColor', String(NEUTRAL_BY_ID[neutralId].hue));
+      localStorage.setItem('shipColor', String(neu.hue));
+      syncNativeColorSpan(neu.hue);
     } else {
       localStorage.removeItem('sb_ship_neutral');
       localStorage.setItem('shipColor', String(hue));
@@ -464,30 +525,15 @@
   }
 
   function hookNeutralShipTint() {
-    if (window.__sbShipNeutralHook) return;
-    var conv = findHsvConverter();
-    if (!conv || !conv.hsvToRgbHex) return;
-    window.__sbShipNeutralHook = true;
-    var orig = conv.hsvToRgbHex.bind(conv);
-    conv.hsvToRgbHex = function (h, s, l) {
-      var id = localStorage.getItem('sb_ship_neutral');
-      var neu = id && NEUTRAL_BY_ID[id];
-      if (neu) {
-        if (id === 'black') return orig(0, 0, 0.12);
-        if (id === 'dgray') return orig(0, 0, 0.28);
-        if (id === 'gray') return orig(0, 0, 0.48);
-        if (id === 'lgray') return orig(0, 0, 0.68);
-        if (id === 'white') return orig(0, 0, 0.92);
-      }
-      return orig(h, s, l);
-    };
-    if (typeof window !== 'undefined') window.ll0O1 = conv;
+    hookAllHsvConverters();
+    hookSetHueTargets();
   }
 
   function watch() {
     injectStyles();
     hookNeutralShipTint();
     hookShipExporter();
+    hookSetColor(findWelcomeHost());
     ensureColorBar();
   }
 
