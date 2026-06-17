@@ -26,12 +26,236 @@
   var hsvConverterCache = null;
   var shipExporterHooked = false;
   var ll0O1TrapInstalled = false;
+  var lO1OlTrapInstalled = false;
+  var shipModelCtorHooked = false;
   var cachedLocalShip = null;
+  var neutralTextureCache = {};
 
   function hexToInt(hex) {
     var v = String(hex || '#ffffff').replace('#', '');
     if (v.length === 3) v = v[0] + v[0] + v[1] + v[1] + v[2] + v[2];
     return parseInt(v, 16) || 0xffffff;
+  }
+
+  function darkenHex(hex, factor) {
+    var n = hexToInt(hex);
+    var r = Math.max(0, Math.floor(((n >> 16) & 255) * factor));
+    var g = Math.max(0, Math.floor(((n >> 8) & 255) * factor));
+    var b = Math.max(0, Math.floor((n & 255) * factor));
+    return (r << 16) | (g << 8) | b;
+  }
+
+  function lightenHexInt(hexInt, amount) {
+    var r = Math.min(255, ((hexInt >> 16) & 255) + amount);
+    var g = Math.min(255, ((hexInt >> 8) & 255) + amount);
+    var b = Math.min(255, (hexInt & 255) + amount);
+    return (r << 16) | (g << 8) | b;
+  }
+
+  function intToCss(hexInt) {
+    var r = (hexInt >> 16) & 255;
+    var g = (hexInt >> 8) & 255;
+    var b = hexInt & 255;
+    return 'rgb(' + r + ',' + g + ',' + b + ')';
+  }
+
+  function isShipModelInstance(obj) {
+    return !!(obj && typeof obj.O11IO === 'function' && obj.O10l1 && obj.I1l0O);
+  }
+
+  function getLocalPlayerId() {
+    var client = getGameClient();
+    if (!client || !client.Ol10l || !client.Ol10l.lO1O0 || !client.Ol10l.lO1O0.status) return null;
+    return client.Ol10l.lO1O0.status.id;
+  }
+
+  function getLocalShipEntry() {
+    var client = getGameClient();
+    if (!client || !client.Ol10l || !client.Ol10l.lI11I || !client.Ol10l.lI11I.ships) return null;
+    var localId = getLocalPlayerId();
+    if (localId == null) return null;
+    var ships = client.Ol10l.lI11I.ships;
+    for (var i = 0; i < ships.length; i++) {
+      var entry = ships[i];
+      if (entry && entry.I0OI1 && entry.I0OI1.status && entry.I0OI1.status.id === localId) {
+        return entry;
+      }
+    }
+    return null;
+  }
+
+  function getNeutralTexturePack(neu) {
+    if (!neu || !window.THREE) return null;
+    if (neutralTextureCache[neu.id]) return neutralTextureCache[neu.id];
+
+    var THREE = window.THREE;
+    var size = 512;
+    var canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = Math.floor(size / 2);
+    var ctx = canvas.getContext('2d');
+    var base = hexToInt(neu.hex);
+    var dark = darkenHex(neu.hex, neu.id === 'white' ? 0.82 : 0.55);
+    var light = lightenHexInt(base, neu.id === 'black' ? 8 : 18);
+    var cols = 8;
+    var rows = 4;
+    var blockW = size / cols;
+    var blockH = canvas.height / rows;
+
+    for (var row = 0; row < rows; row++) {
+      for (var col = 0; col < cols; col++) {
+        var tone = ((row + col) % 3 === 0) ? light : ((row + col) % 2 === 0 ? base : dark);
+        ctx.fillStyle = intToCss(tone);
+        ctx.fillRect(col * blockW, row * blockH, blockW + 1, blockH + 1);
+      }
+    }
+
+    ctx.strokeStyle = intToCss(darkenHex(neu.hex, 0.35));
+    ctx.lineWidth = 1;
+    for (var gx = 0; gx <= cols; gx++) {
+      ctx.beginPath();
+      ctx.moveTo(gx * blockW, 0);
+      ctx.lineTo(gx * blockW, canvas.height);
+      ctx.stroke();
+    }
+    for (var gy = 0; gy <= rows; gy++) {
+      ctx.beginPath();
+      ctx.moveTo(0, gy * blockH);
+      ctx.lineTo(size, gy * blockH);
+      ctx.stroke();
+    }
+
+    var map = new THREE.Texture(canvas);
+    map.needsUpdate = true;
+    map.wrapS = THREE.RepeatWrapping;
+    map.wrapT = THREE.RepeatWrapping;
+    map.minFilter = THREE.LinearFilter;
+    map.magFilter = THREE.LinearFilter;
+
+    var emissiveMap = null;
+    if (neu.id !== 'black') {
+      var emCanvas = document.createElement('canvas');
+      emCanvas.width = 128;
+      emCanvas.height = 64;
+      var emCtx = emCanvas.getContext('2d');
+      emCtx.fillStyle = intToCss(base);
+      emCtx.fillRect(0, 0, emCanvas.width, emCanvas.height);
+      emissiveMap = new THREE.Texture(emCanvas);
+      emissiveMap.needsUpdate = true;
+      emissiveMap.wrapS = THREE.RepeatWrapping;
+      emissiveMap.wrapT = THREE.RepeatWrapping;
+    }
+
+    var pack = {
+      map: map,
+      emissiveMap: emissiveMap,
+      color: 0xffffff,
+      emissive: neu.id === 'black' ? 0x000000 : base,
+      emissiveIntensity: neu.id === 'black' ? 0 : (neu.id === 'white' ? 0.12 : 0.22),
+      engine: neu.id === 'black' ? 0x111111 : lightenHexInt(base, 10),
+      engineOpacity: neu.id === 'black' ? 0.12 : 0.55
+    };
+    neutralTextureCache[neu.id] = pack;
+    return pack;
+  }
+
+  function patchShipMaterialWithTextures(mat, pack, neu) {
+    if (!mat || !pack || !neu) return;
+    if (mat.__sbGemPatched || mat.__sbAsteroidPatched) return;
+    if (mat.map) {
+      mat.map = pack.map;
+      if (mat.bumpMap) mat.bumpMap = pack.map;
+      if (mat.specularMap) mat.specularMap = pack.map;
+    }
+    if (mat.color && mat.color.setHex) mat.color.setHex(pack.color);
+    if (mat.emissive != null) {
+      if (typeof mat.emissive === 'number') mat.emissive = pack.emissive;
+      else if (mat.emissive.setHex) mat.emissive.setHex(pack.emissive);
+    }
+    if (mat.emissiveMap !== undefined) mat.emissiveMap = pack.emissiveMap;
+    if (mat.emissiveIntensity != null) mat.emissiveIntensity = pack.emissiveIntensity;
+    if (mat.specular && mat.specular.setHex) {
+      mat.specular.setHex(neu.id === 'black' ? 0x050505 : darkenHex(neu.hex, 0.7));
+    }
+    if (mat.shininess != null) mat.shininess = neu.id === 'white' ? 24 : 10;
+    mat.__sbNeutralTexId = neu.id;
+    mat.needsUpdate = true;
+  }
+
+  function applyNeutralShipModelTextures(shipmodel, neu) {
+    if (!shipmodel || !neu) return;
+    var pack = getNeutralTexturePack(neu);
+    if (!pack) return;
+
+    shipmodel.__sbNeutralId = neu.id;
+    shipmodel.hue = neu.hue / 360;
+
+    var mats = [];
+    if (shipmodel.material) mats.push(shipmodel.material);
+    if (shipmodel.lOl01) mats.push(shipmodel.lOl01);
+    if (shipmodel.I1l0O && shipmodel.I1l0O.material) mats.push(shipmodel.I1l0O.material);
+
+    for (var m = 0; m < mats.length; m++) {
+      patchShipMaterialWithTextures(mats[m], pack, neu);
+    }
+
+    if (shipmodel.O10l1 && shipmodel.O10l1.traverse) {
+      shipmodel.O10l1.traverse(function (node) {
+        if (node && node.material) patchShipMaterialWithTextures(node.material, pack, neu);
+      });
+    }
+
+    if (shipmodel.lO0O0) {
+      if (shipmodel.lO0O0.color && shipmodel.lO0O0.color.setHex) {
+        shipmodel.lO0O0.color.setHex(pack.engine);
+      }
+      shipmodel.lO0O0.opacity = pack.engineOpacity;
+      shipmodel.lO0O0.needsUpdate = true;
+    }
+  }
+
+  function patchInGameLocalShipTextures() {
+    var neu = getActiveNeutral();
+    if (!neu) return;
+    var entry = getLocalShipEntry();
+    if (entry && entry.shipmodel) applyNeutralShipModelTextures(entry.shipmodel, neu);
+  }
+
+  function hookShipModelBuilder() {
+    var Ctor = window.lO1Ol;
+    if (!Ctor || !Ctor.prototype || shipModelCtorHooked) return;
+
+    if (typeof Ctor.prototype.O11IO === 'function' && !Ctor.prototype.__sbO11IOWrapped) {
+      var originalO11IO = Ctor.prototype.O11IO;
+      Ctor.prototype.O11IO = function () {
+        var mat = originalO11IO.apply(this, arguments);
+        var neu = getActiveNeutral();
+        if (neu) applyNeutralShipModelTextures(this, neu);
+        return mat;
+      };
+      Ctor.prototype.__sbO11IOWrapped = true;
+    }
+
+    shipModelCtorHooked = true;
+  }
+
+  function installLO1OlTrap() {
+    if (lO1OlTrapInstalled || typeof window === 'undefined') return;
+    lO1OlTrapInstalled = true;
+    var current = window.lO1Ol;
+    try {
+      Object.defineProperty(window, 'lO1Ol', {
+        configurable: true,
+        enumerable: true,
+        get: function () { return current; },
+        set: function (v) {
+          current = v;
+          shipModelCtorHooked = false;
+          hookShipModelBuilder();
+        }
+      });
+    } catch (e) { /* ignore */ }
+    if (current) hookShipModelBuilder();
   }
 
   function walkObjects(root, visit, maxDepth) {
@@ -348,11 +572,16 @@
 
   function applyNeutralMaterial(material, neu) {
     if (!material || !neu) return;
+    var pack = getNeutralTexturePack(neu);
     var mats = Array.isArray(material) ? material : [material];
     var target = hexToInt(neu.hex);
     for (var i = 0; i < mats.length; i++) {
       var mat = mats[i];
-      if (!shouldTintMeshMaterial(mat) && !isShipTintMaterial(mat)) continue;
+      if (!shouldTintMeshMaterial(mat, neu) && !isShipTintMaterial(mat)) continue;
+      if (pack && mat.map) {
+        patchShipMaterialWithTextures(mat, pack, neu);
+        continue;
+      }
       if (mat.color && mat.color.setHex) {
         mat.color.setHex(target);
         if (neu.id === 'black' && mat.color.setRGB) mat.color.setRGB(0.02, 0.02, 0.02);
@@ -360,6 +589,7 @@
       if (mat.emissive && mat.emissive.setHex) {
         mat.emissive.setHex(0x000000);
       }
+      if (mat.emissiveMap !== undefined) mat.emissiveMap = null;
       if (mat.specular && mat.specular.setHex) {
         mat.specular.setHex(neu.id === 'black' ? 0x050505 : 0x333333);
       }
@@ -467,6 +697,12 @@
     for (var s = 0; s < scenes.length; s++) tintObject3D(scenes[s], neu);
     var ship = findLocalShipRoot();
     if (ship) tintObject3D(ship, neu);
+    if (host && host.lI1IO) {
+      walkObjects(host.lI1IO, function (obj) {
+        if (isShipModelInstance(obj)) applyNeutralShipModelTextures(obj, neu);
+        return null;
+      }, 14);
+    }
     syncWelcomeCanvasFilter(neu);
   }
 
@@ -485,7 +721,9 @@
         cachedLocalShip = ship;
         tintObject3D(ship, neu);
         attachPerRenderTint(ship);
+        if (isShipModelInstance(ship)) applyNeutralShipModelTextures(ship, neu);
       }
+      patchInGameLocalShipTextures();
     } finally {
       window.__sbApplyingLocalShipColor = false;
       window.__sbInGameShipTint = false;
@@ -533,8 +771,10 @@
           window.__sbInGameShipTint = true;
           try {
             var out = original.call(this, neu.hue);
+            if (isShipModelInstance(this)) applyNeutralShipModelTextures(this, neu);
             tintObject3D(this, neu);
             attachPerRenderTint(this);
+            patchInGameLocalShipTextures();
             return out;
           } finally {
             window.__sbApplyingLocalShipColor = false;
@@ -943,6 +1183,8 @@
 
   function hookNeutralShipTint() {
     hookAllHsvConverters();
+    installLO1OlTrap();
+    hookShipModelBuilder();
     hookSetHueTargets();
     hookShipUpdateHue();
   }
