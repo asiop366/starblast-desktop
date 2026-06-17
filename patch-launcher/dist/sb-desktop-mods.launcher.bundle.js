@@ -1,5 +1,5 @@
-/* Starblast Desktop visual mods — launcher v1.1.18 */
-window.__SB_DESKTOP_MODS_VERSION = "1.1.18";
+/* Starblast Desktop visual mods — launcher v1.1.19 */
+window.__SB_DESKTOP_MODS_VERSION = "1.1.19";
 window.__SB_DESKTOP_CLIENT = true;
 window.__SB_DESKTOP_LAUNCHER_PATCH = true;
 /**

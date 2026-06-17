@@ -74,6 +74,16 @@ fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n');
 const patchLauncherVersionPath = path.join(ROOT, 'patch-launcher', 'mods-version.txt');
 fs.writeFileSync(patchLauncherVersionPath, version + '\n');
 
+const localManifest = {
+  version: version,
+  updatedAt: manifest.updatedAt,
+  offline: true,
+  localBundle: 'dist/sb-desktop-mods.launcher.bundle.js',
+  launcherBundleSha256: launcherSha256
+};
+const localManifestPath = path.join(ROOT, 'patch-launcher', 'mods-manifest.local.json');
+fs.writeFileSync(localManifestPath, JSON.stringify(localManifest, null, 2) + '\n');
+
 console.log('');
 console.log('Published mod release v' + version);
 console.log('  Bundle: releases/' + version + '/' + bundleName);

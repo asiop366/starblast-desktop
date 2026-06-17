@@ -1,0 +1,7 @@
+{
+  "version": "1.1.19",
+  "updatedAt": "2026-06-17T19:11:15.684Z",
+  "offline": true,
+  "localBundle": "dist/sb-desktop-mods.launcher.bundle.js",
+  "launcherBundleSha256": "7a4c76d7ce290210fd4b6ec441c9599838d9aae908b9968f0fba51ac44117fb6"
+}

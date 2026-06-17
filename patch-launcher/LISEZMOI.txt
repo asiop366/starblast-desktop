@@ -6,7 +6,7 @@ CE QU'IL DOIT DEJA AVOIR
   • Node.js LTS : https://nodejs.org/  (une fois, gratuit)
 
 CE QUE TU LUI ENVOIES
-  Le zip patch-launcher (v1.1.12 ou plus recent) avec :
+  Le zip patch-launcher (v1.1.18 ou plus recent) avec :
     - PATCH-LAUNCHER.bat      <- premiere installation
     - UPDATE-LAUNCHER.bat     <- mises a jour mods
     - VERIFY-MODS.bat         <- verifier bundle + patch Launcher
@@ -60,12 +60,12 @@ CE QUE TU LUI ENVOIES
 ================================================
 
   A) VERIFY-MODS.bat
-     -> Version bundle local : 1.1.11
+     -> Version bundle local : 1.1.18
      -> app.asar patche : OUI
 
   B) En jeu, F12 (console) :
      window.__SB_DESKTOP_MODS_VERSION
-     -> doit afficher "1.1.11"
+     -> doit afficher "1.1.18"
 
      window.__SB_DESKTOP_LAUNCHER_PATCH
      -> doit afficher true
@@ -80,9 +80,20 @@ CE QUE TU LUI ENVOIES
   2. Double-clic UPDATE-LAUNCHER.bat
   3. Relancer le Launcher
 
+  Si UPDATE affiche "HTTP 404" puis "offline bundle from zip" :
+    -> Normal si le depot GitHub est PRIVE
+    -> Le bundle du zip est quand meme applique (OK)
+  Pour auto-update en ligne depuis GitHub :
+    -> Rendre le repo starblast-desktop PUBLIC
+    -> Ou envoyer un zip patch-launcher plus recent
+
 ================================================
  DEPANNAGE
 ================================================
+
+  "UPDATE-LAUNCHER echoue (404 manifest)"
+    -> Utilise le zip v1.1.19+ (fallback offline integre)
+    -> Ou PATCH-LAUNCHER.bat avec un zip recent
 
   "PATCH-LAUNCHER a plante"
     -> Utilise le zip v1.1.12 ou plus recent

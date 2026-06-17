@@ -38,6 +38,9 @@ echo ============================================
 echo  OK - Relance Starblast Launcher
 echo ============================================
 echo.
+echo Si tu as vu "offline bundle from zip", c est normal
+echo quand le depot GitHub est prive. Le zip local a ete applique.
+echo.
 pause
 exit /b 0
 
