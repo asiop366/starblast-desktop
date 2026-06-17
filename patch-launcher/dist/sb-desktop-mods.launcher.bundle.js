@@ -1,5 +1,5 @@
-/* Starblast Desktop visual mods — launcher v1.1.19 */
-window.__SB_DESKTOP_MODS_VERSION = "1.1.19";
+/* Starblast Desktop visual mods — launcher v1.1.20 */
+window.__SB_DESKTOP_MODS_VERSION = "1.1.20";
 window.__SB_DESKTOP_CLIENT = true;
 window.__SB_DESKTOP_LAUNCHER_PATCH = true;
 /**
@@ -465,6 +465,120 @@ window.__SB_DESKTOP_LAUNCHER_PATCH = true;
   var cachedLocalShip = null;
   var neutralTextureCache = {};
 
+  var NEON_ROSE_FINISH = 'neonrose';
+  var NEON_ROSE_HUE_DEG = 322;
+  var NEON_ROSE_HUE = NEON_ROSE_HUE_DEG / 360;
+
+  function getLocalCustomFinish() {
+    var host = findWelcomeHost();
+    if (host && host.lI1IO && host.lI1IO.I0OlO && host.lI1IO.I0OlO.custom && host.lI1IO.I0OlO.custom.finish) {
+      return host.lI1IO.I0OlO.custom.finish;
+    }
+    return localStorage.getItem('finish') || '';
+  }
+
+  function isNeonRoseFinish(finish) {
+    return finish === NEON_ROSE_FINISH;
+  }
+
+  function injectCustomFinishOptions() {
+    walkObjects(window, function (obj) {
+      if (obj && obj.options && obj.options.finish && typeof obj.options.finish === 'object') {
+        if (!obj.options.finish[NEON_ROSE_FINISH]) {
+          obj.options.finish[NEON_ROSE_FINISH] = 'Rose Neon';
+        }
+      }
+      return null;
+    }, 12);
+  }
+
+  function applyNeonRoseEngine(shipmodel) {
+    if (!shipmodel || !shipmodel.lO0O0) return;
+    var conv = findHsvConverter();
+    var rgb = conv && conv.hsvToRgb ? conv.hsvToRgb(NEON_ROSE_HUE, 0.65, 1) : { r: 255, g: 110, b: 230 };
+    if (shipmodel.lO0O0.color && shipmodel.lO0O0.color.setRGB) {
+      shipmodel.lO0O0.color.setRGB(rgb.r / 255, rgb.g / 255, rgb.b / 255);
+    }
+    shipmodel.lO0O0.opacity = 0.9;
+    shipmodel.lO0O0.needsUpdate = true;
+  }
+
+  function buildNeonRoseShipMaterial(shipmodel) {
+    if (!shipmodel) return null;
+    shipmodel.finish = NEON_ROSE_FINISH;
+    shipmodel.hue = NEON_ROSE_HUE;
+    if (typeof shipmodel.buildFullColorMaterial === 'function') {
+      shipmodel.buildFullColorMaterial();
+    } else if (typeof shipmodel.buildDefaultMaterial === 'function') {
+      shipmodel.buildDefaultMaterial();
+    }
+    if (shipmodel.material) {
+      var conv = findHsvConverter();
+      var body = conv && conv.hsvToRgbHex
+        ? conv.hsvToRgbHex(NEON_ROSE_HUE, 1, 1)
+        : 0xff4fd8;
+      var glow = conv && conv.hsvToRgbHex
+        ? conv.hsvToRgbHex(NEON_ROSE_HUE, 0.55, 1)
+        : 0xff8ae8;
+      if (shipmodel.material.color && shipmodel.material.color.setHex) {
+        shipmodel.material.color.setHex(body);
+      }
+      if (shipmodel.material.emissive != null) {
+        if (typeof shipmodel.material.emissive === 'number') shipmodel.material.emissive = glow;
+        else if (shipmodel.material.emissive.setHex) shipmodel.material.emissive.setHex(glow);
+      }
+      if (shipmodel.material.emissiveIntensity != null) shipmodel.material.emissiveIntensity = 0.75;
+      if (shipmodel.material.emissiveMap !== undefined) shipmodel.material.emissiveMap = shipmodel.material.emissiveMap || null;
+      shipmodel.material.needsUpdate = true;
+      shipmodel.lOl01 = shipmodel.material;
+      if (shipmodel.I1l0O) shipmodel.I1l0O.material = shipmodel.material;
+    }
+    applyNeonRoseEngine(shipmodel);
+    return shipmodel.material;
+  }
+
+  function applyNeonRoseShipModel(shipmodel) {
+    if (!shipmodel) return;
+    if (!isNeonRoseFinish(shipmodel.finish || getLocalCustomFinish())) {
+      shipmodel.__sbNeonRoseApplied = false;
+      return;
+    }
+    if (shipmodel.__sbNeonRoseApplied === NEON_ROSE_FINISH) return;
+    buildNeonRoseShipMaterial(shipmodel);
+    shipmodel.__sbNeonRoseApplied = NEON_ROSE_FINISH;
+  }
+
+  function patchInGameLocalNeonRoseShip() {
+    if (!isNeonRoseFinish(getLocalCustomFinish())) return;
+    var entry = getLocalShipEntry();
+    if (entry && entry.shipmodel) applyNeonRoseShipModel(entry.shipmodel);
+  }
+
+  function hookBadgeFinishPreview() {
+    var Badge = findBadgeRenderer();
+    if (!Badge || !Badge.prototype || Badge.prototype.__sbNeonRoseFinishHooked) return;
+    if (typeof Badge.prototype.drawMaterial !== 'function') return;
+
+    var original = Badge.prototype.drawMaterial;
+    Badge.prototype.drawMaterial = function (ctx, width, height) {
+      var finish = this.finish || (this.custom && this.custom.finish);
+      if (isNeonRoseFinish(finish)) {
+        var grad = ctx.createLinearGradient(0, 0, 0, height);
+        grad.addColorStop(0, '#ff5ce8');
+        grad.addColorStop(0.45, '#ff9ef5');
+        grad.addColorStop(1, '#d946ef');
+        ctx.globalCompositeOperation = 'source-atop';
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, width, height);
+        ctx.globalCompositeOperation = 'source-over';
+        return;
+      }
+      return original.apply(this, arguments);
+    };
+    Badge.prototype.__sbNeonRoseFinishHooked = true;
+    badgeRendererCache = Badge;
+  }
+
   function hexToInt(hex) {
     var v = String(hex || '#ffffff').replace('#', '');
     if (v.length === 3) v = v[0] + v[0] + v[1] + v[1] + v[2] + v[2];
@@ -649,8 +763,9 @@ window.__SB_DESKTOP_LAUNCHER_PATCH = true;
   }
 
   function patchInGameLocalShipTextures() {
+    patchInGameLocalNeonRoseShip();
     var neu = getActiveNeutral();
-    if (!neu) return;
+    if (!neu || isNeonRoseFinish(getLocalCustomFinish())) return;
     var entry = getLocalShipEntry();
     if (entry && entry.shipmodel) applyNeutralShipModelTextures(entry.shipmodel, neu);
   }
@@ -662,9 +777,14 @@ window.__SB_DESKTOP_LAUNCHER_PATCH = true;
     if (typeof Ctor.prototype.O11IO === 'function' && !Ctor.prototype.__sbO11IOWrapped) {
       var originalO11IO = Ctor.prototype.O11IO;
       Ctor.prototype.O11IO = function () {
-        var mat = originalO11IO.apply(this, arguments);
+        var mat;
+        if (isNeonRoseFinish(this.finish)) {
+          mat = buildNeonRoseShipMaterial(this);
+          return mat;
+        }
+        mat = originalO11IO.apply(this, arguments);
         var neu = getActiveNeutral();
-        if (neu) applyNeutralShipModelTextures(this, neu);
+        if (neu && !isNeonRoseFinish(this.finish)) applyNeutralShipModelTextures(this, neu);
         return mat;
       };
       Ctor.prototype.__sbO11IOWrapped = true;
@@ -1115,11 +1235,19 @@ window.__SB_DESKTOP_LAUNCHER_PATCH = true;
 
   function tintWelcomeShip(host) {
     var neu = getActiveNeutral();
-    if (!neu) {
+    var rose = isNeonRoseFinish(getLocalCustomFinish());
+    if (!neu && !rose) {
       syncWelcomeCanvasFilter(null);
       return;
     }
     host = host || findWelcomeHost();
+    if (rose && host && host.lI1IO) {
+      walkObjects(host.lI1IO, function (obj) {
+        if (isShipModelInstance(obj)) applyNeonRoseShipModel(obj);
+        return null;
+      }, 14);
+    }
+    if (!neu) return;
     if (!host || !host.lI1IO || !host.lI1IO.display) {
       syncWelcomeCanvasFilter(neu);
       return;
@@ -1133,7 +1261,10 @@ window.__SB_DESKTOP_LAUNCHER_PATCH = true;
     if (ship) tintObject3D(ship, neu);
     if (host && host.lI1IO) {
       walkObjects(host.lI1IO, function (obj) {
-        if (isShipModelInstance(obj)) applyNeutralShipModelTextures(obj, neu);
+        if (isShipModelInstance(obj)) {
+          if (isNeonRoseFinish(getLocalCustomFinish())) applyNeonRoseShipModel(obj);
+          else applyNeutralShipModelTextures(obj, neu);
+        }
         return null;
       }, 14);
     }
@@ -1142,20 +1273,26 @@ window.__SB_DESKTOP_LAUNCHER_PATCH = true;
 
   function applyLocalNeutralTint(scene, camera) {
     var neu = getActiveNeutral();
-    if (!neu) return;
+    var rose = isNeonRoseFinish(getLocalCustomFinish());
+    if (!neu && !rose) return;
     window.__sbApplyingLocalShipColor = true;
     window.__sbInGameShipTint = !!(scene && camera);
     try {
       hookAllHsvConverters();
       tintWelcomeShip(findWelcomeHost());
-      if (scene && camera) tintMeshesNearCamera(scene, camera, neu);
+      if (neu && scene && camera) tintMeshesNearCamera(scene, camera, neu);
       var ship = scene && camera ? findLocalShipFromScene(scene, camera) : findLocalShipRoot();
       if (!ship && scene && camera) ship = findLocalShipFromScene(scene, camera);
       if (ship) {
         cachedLocalShip = ship;
-        tintObject3D(ship, neu);
-        attachPerRenderTint(ship);
-        if (isShipModelInstance(ship)) applyNeutralShipModelTextures(ship, neu);
+        if (neu) {
+          tintObject3D(ship, neu);
+          attachPerRenderTint(ship);
+        }
+        if (isShipModelInstance(ship)) {
+          if (rose) applyNeonRoseShipModel(ship);
+          else if (neu) applyNeutralShipModelTextures(ship, neu);
+        }
       }
       patchInGameLocalShipTextures();
     } finally {
@@ -1270,9 +1407,14 @@ window.__SB_DESKTOP_LAUNCHER_PATCH = true;
       var neu = neutralId && NEUTRAL_BY_ID[neutralId];
       var shipHue = parseInt(hue, 10);
       if (isNaN(shipHue)) shipHue = 0;
-      if (neu) shipHue = neu.hue;
+      if (isNeonRoseFinish(finish || getLocalCustomFinish())) {
+        finish = NEON_ROSE_FINISH;
+        shipHue = NEON_ROSE_HUE_DEG;
+      } else if (neu) {
+        shipHue = neu.hue;
+      }
       var thumb = original(code, shipHue, finish, laser, size);
-      if (neu && thumb) thumb = applyNeutralCanvasFilter(thumb, neu);
+      if (neu && !isNeonRoseFinish(finish) && thumb) thumb = applyNeutralCanvasFilter(thumb, neu);
       return thumb;
     };
     exporter.__sbShipColorWrapped = true;
@@ -1302,6 +1444,7 @@ window.__SB_DESKTOP_LAUNCHER_PATCH = true;
       finish = host.lI1IO.I0OlO.custom.finish;
       laser = host.lI1IO.I0OlO.custom.laser;
     }
+    if (isNeonRoseFinish(finish)) finish = NEON_ROSE_FINISH;
     return { finish: finish, laser: laser };
   }
 
@@ -1330,11 +1473,15 @@ window.__SB_DESKTOP_LAUNCHER_PATCH = true;
     host = host || findWelcomeHost();
     if (!host || !host.lI1IO || !host.lI1IO.I0OlO) return;
     var neu = getActiveNeutral();
-    var parsed = neu ? neu.hue : parseInt(hue, 10);
+    var rose = isNeonRoseFinish(getLocalCustomFinish());
+    var parsed = rose ? NEON_ROSE_HUE_DEG : (neu ? neu.hue : parseInt(hue, 10));
     if (isNaN(parsed)) parsed = 0;
     if (host.lI1IO.I0OlO.custom) {
       host.lI1IO.I0OlO.custom.hue = parsed;
-      if (neu) {
+      if (rose) {
+        host.lI1IO.I0OlO.custom.finish = NEON_ROSE_FINISH;
+        delete host.lI1IO.I0OlO.custom.sb_ship_neutral;
+      } else if (neu) {
         host.lI1IO.I0OlO.custom.saturation = 0;
         host.lI1IO.I0OlO.custom.s = 0;
         host.lI1IO.I0OlO.custom.sb_ship_neutral = neu.id;
@@ -1367,6 +1514,8 @@ window.__SB_DESKTOP_LAUNCHER_PATCH = true;
 
   function refreshShipPreview() {
     hookShipExporter();
+    injectCustomFinishOptions();
+    hookBadgeFinishPreview();
     var exporter = findShipExporter();
     if (!exporter) return;
 
@@ -1619,6 +1768,8 @@ window.__SB_DESKTOP_LAUNCHER_PATCH = true;
     hookAllHsvConverters();
     installLO1OlTrap();
     hookShipModelBuilder();
+    injectCustomFinishOptions();
+    hookBadgeFinishPreview();
     hookSetHueTargets();
     hookShipUpdateHue();
   }
